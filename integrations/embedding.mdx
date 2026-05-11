@@ -1,0 +1,162 @@
+---
+title: "Embedding the SQLBot Chat Widget in Your Web App"
+description: "Add SQLBot as a chat widget to any web page via a script tag or iframe. Configure an allowed-domain list to control which origins can load the assistant."
+---
+
+SQLBot can be embedded directly in your own web application as an interactive chat widget. Once embedded, your users can ask natural-language questions about your data without leaving your product. You control the appearance, the allowed domains, and which datasources are exposed.
+
+## Before you embed
+
+You must create an **Assistant** in SQLBot before you can generate an embed snippet. The assistant holds the configuration for your embedded experience: which workspace and datasources are available, the UI theme, and the domain whitelist that controls where the widget can load.
+
+<Steps>
+  <Step title="Create an assistant">
+    In the SQLBot web UI, navigate to **Applications** and click **Create**. Give the assistant a name and select the workspace (`oid`) it should query against.
+  </Step>
+
+  <Step title="Configure allowed domains">
+    In the assistant settings, add every domain that will host the widget to the **Domain** field. SQLBot validates the `Origin` request header against this list on every embed request — requests from unlisted origins are rejected.
+
+    ```text
+    https://app.example.com
+    https://staging.example.com
+    ```
+
+    <Warning>
+      If the `Origin` header does not match the assistant's domain list, the API returns an error and the widget will not load. Make sure to include all environments (production, staging, preview URLs) that need access.
+    </Warning>
+  </Step>
+
+  <Step title="Copy the embed snippet">
+    After saving the assistant, open its detail page and copy the generated embed snippet. SQLBot provides two modes: a **floating widget** (pop-up button) and a **full-page iframe**.
+  </Step>
+</Steps>
+
+## Embedding modes
+
+<Tabs>
+  <Tab title="Floating widget (pop-up)">
+    The floating widget adds a chat button to the corner of your page. Clicking it opens the SQLBot chat panel as an overlay. This is the mode shown in the official demo page (`sqlbot-assistant-demo.html`).
+
+    Add the following `<script>` tag to the `<head>` of your HTML page, replacing the `id` attribute with your assistant's ID:
+
+    ```html
+    <script
+      async
+      defer
+      id="sqlbot-assistant-float-script-{your-assistant-id}"
+      src="https://<your-sqlbot-host>/assistant.js?id={your-assistant-id}">
+    </script>
+    ```
+
+    The script self-initializes — no additional JavaScript is required. The widget respects your assistant's UI configuration (colors, logo, welcome message).
+
+    **Full example (from the official demo):**
+
+    ```html
+    <!DOCTYPE html>
+    <html lang="zh-CN">
+      <head>
+        <meta charset="UTF-8" />
+        <title>My Application</title>
+        <!-- SQLBot floating widget -->
+        <script
+          async
+          defer
+          id="sqlbot-assistant-float-script-7356228649239973888"
+          src="https://sqlbot.fit2cloud.cn/assistant.js?id=7356228649239973888">
+        </script>
+      </head>
+      <body>
+        <!-- your page content -->
+      </body>
+    </html>
+    ```
+  </Tab>
+
+  <Tab title="Inline iframe">
+    Embed SQLBot as a full-page or inline panel using a standard `<iframe>`. This is suitable for dashboards or dedicated analytics pages where you want the chat interface to occupy a defined region of the layout.
+
+    ```html
+    <iframe
+      src="https://<your-sqlbot-host>/embedded?id={your-assistant-id}"
+      width="100%"
+      height="600"
+      frameborder="0"
+      allow="clipboard-write">
+    </iframe>
+    ```
+
+    The embedded page (`/embedded`) is a standalone Vue SPA entry point (`frontend/embedded.html`) that loads the chat interface without the SQLBot navigation shell:
+
+    ```html
+    <!doctype html>
+    <html lang="en">
+      <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>SQLBot</title>
+      </head>
+      <body>
+        <div id="app"></div>
+        <script type="module" src="/src/main.ts"></script>
+      </body>
+    </html>
+    ```
+  </Tab>
+</Tabs>
+
+## How origin validation works
+
+Every request from an embedded widget passes through the `/system/assistant/info/{id}` or `/system/assistant/app/{appId}` endpoint. SQLBot extracts the `Origin` header (falling back to the `Referer` header) and compares it against the assistant's `domain` field using `origin_match_domain`.
+
+From `backend/apps/system/api/assistant.py`:
+
+```python
+origin = request.headers.get("origin") or get_origin_from_referer(request)
+if not origin:
+    raise RuntimeError(trans('i18n_embedded.invalid_origin', origin=origin or ''))
+origin = origin.rstrip('/')
+if not origin_match_domain(origin, db_model.domain):
+    raise RuntimeError(trans('i18n_embedded.invalid_origin', origin=origin or ''))
+
+response.headers["Access-Control-Allow-Origin"] = origin
+```
+
+When validation passes, SQLBot sets `Access-Control-Allow-Origin` to the exact requesting origin, enabling the browser to load the widget. When validation fails, the request errors out before any data is returned.
+
+<Note>
+  The domain field supports multiple entries. Separate multiple allowed origins with a newline or comma in the assistant settings UI. Wildcards are not supported — each allowed origin must be listed explicitly.
+</Note>
+
+## Datasource visibility
+
+By default, an online assistant exposes all datasources in its workspace to embedded users. You can restrict access by configuring a `public_list` of allowed datasource IDs in the assistant's configuration. When `online` is `false` and no `public_list` is set, the datasource list returns empty.
+
+```python
+# From backend/apps/system/api/assistant.py
+if not online:
+    public_list: list[int] = config.get('public_list') or None
+    if public_list:
+        stmt = stmt.where(CoreDatasource.id.in_(public_list))
+    else:
+        return []
+```
+
+<Tip>
+  To give embedded users access to only specific tables, set the assistant to offline and populate `public_list` with the IDs of the datasources they should be able to query.
+</Tip>
+
+## Customizing the widget appearance
+
+The assistant UI can be configured from the SQLBot web interface under the assistant's **UI** settings. Supported customizations include:
+
+- Logo image (`.jpg`, `.png`, or `.svg`, maximum 10 MB)
+- Float icon (the chat button icon, same file type limits)
+- Color theme and welcome message
+
+Changes are applied immediately — no re-embedding is needed after updating UI settings.
+
+<Warning>
+  Uploaded logo and float icon files are stored on the SQLBot server. If you replace a logo, the previous file is deleted automatically. Make sure you have a local copy if you need to restore it.
+</Warning>

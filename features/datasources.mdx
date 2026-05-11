@@ -1,0 +1,167 @@
+---
+title: "Connecting and Managing Database Sources in SQLBot"
+description: "Learn how to add database connections, select queryable tables, annotate schema metadata, and upload Excel or CSV files as data sources."
+---
+
+A datasource is SQLBot's connection to your data. Before you can ask any natural language questions, you need to connect at least one database or upload a file. SQLBot uses your datasource to introspect the schema, surface table and field metadata to the LLM, and execute the generated SQL. This page walks through every step of adding and configuring a datasource.
+
+## Supported database types
+
+SQLBot can connect to the following systems out of the box:
+
+<CardGroup cols={3}>
+  <Card title="MySQL" icon="database" />
+  <Card title="PostgreSQL" icon="database" />
+  <Card title="Microsoft SQL Server" icon="database" />
+  <Card title="Oracle" icon="database" />
+  <Card title="ClickHouse" icon="database" />
+  <Card title="Elasticsearch" icon="database" />
+  <Card title="AWS Redshift" icon="database" />
+  <Card title="Apache Hive" icon="database" />
+  <Card title="Apache Doris" icon="database" />
+  <Card title="StarRocks" icon="database" />
+  <Card title="DM (达梦)" icon="database" />
+  <Card title="Kingbase" icon="database" />
+  <Card title="SQLite" icon="database" />
+  <Card title="Excel / CSV" icon="file-spreadsheet" />
+</CardGroup>
+
+<Info>
+  Only workspace admins can add, edit, or delete datasources. Regular workspace members can query existing datasources but cannot modify connection settings.
+</Info>
+
+## Adding a database connection
+
+<Steps>
+  <Step title="Navigate to Datasources">
+    In the left sidebar, click **Datasources**. The list shows all datasources already connected to your workspace.
+  </Step>
+
+  <Step title="Click Add">
+    Click the **Add** button in the top-right corner. A configuration panel opens.
+  </Step>
+
+  <Step title="Choose the database type">
+    Select your database engine from the type dropdown. The form adapts to show the correct connection fields for that engine (host, port, database name, username, password, and any engine-specific options).
+  </Step>
+
+  <Step title="Fill in connection details">
+    Enter the connection parameters. For example, a PostgreSQL connection requires:
+
+    ```text
+    Host:     db.example.com
+    Port:     5432
+    Database: analytics
+    Username: sqlbot_reader
+    Password: ••••••••
+    ```
+
+    <Tip>
+      SQLBot stores connection credentials encrypted. Use a read-only database account to limit what SQLBot can access.
+    </Tip>
+  </Step>
+
+  <Step title="Test the connection">
+    Click **Test Connection**. SQLBot attempts to connect and returns a success or failure status. If the test fails, double-check host reachability, credentials, and firewall rules before saving.
+  </Step>
+
+  <Step title="Save the datasource">
+    Click **Save**. The datasource appears in the list with a status indicator showing whether the connection is active.
+  </Step>
+</Steps>
+
+## Selecting tables
+
+After saving a datasource, SQLBot fetches all available tables from the database. You must explicitly select which tables SQLBot is allowed to query. This controls both what the LLM sees in its schema context and what SQL it is permitted to generate.
+
+<Steps>
+  <Step title="Open the datasource">
+    Click the datasource name in the list to open it.
+  </Step>
+
+  <Step title="Go to the Tables tab">
+    Switch to the **Tables** tab. You will see every table in the connected database.
+  </Step>
+
+  <Step title="Enable the tables you want">
+    Toggle on each table that SQLBot should be able to query. Untoggled tables are excluded from schema context entirely — the LLM will not know they exist.
+  </Step>
+
+  <Step title="Save your selection">
+    Click **Save** to confirm the table selection. SQLBot immediately updates its schema context for this datasource.
+  </Step>
+</Steps>
+
+<Warning>
+  If you add new tables to your database later, you must return here and manually enable them. SQLBot does not automatically detect schema changes.
+</Warning>
+
+## Annotating table and field metadata
+
+For each enabled table, you can add a **description** (called a custom comment) to both the table itself and each of its columns. These descriptions are injected into the LLM's schema context and directly affect query accuracy.
+
+To edit metadata:
+
+1. Click a table name to expand it.
+2. Enter a plain-language description in the **Table description** field. For example: `Stores one row per completed customer order, including totals and shipping status`.
+3. For each column, add a **Field description** explaining what it contains. For example, a column named `gmv` might get the description `Gross merchandise value in USD, before refunds`.
+4. Click **Save**.
+
+<Tip>
+  Descriptions are especially important for columns with non-obvious names, numeric IDs that join to other tables, or status codes stored as integers. The more context you provide, the more accurately SQLBot can map your questions to the right columns.
+</Tip>
+
+You can also export and bulk-import metadata via Excel:
+
+- **Export schema** downloads an `.xlsx` file with all your tables and field descriptions pre-filled.
+- **Import schema** lets you fill in or update descriptions in the spreadsheet and re-upload it, applying all changes in one batch.
+
+## Uploading Excel or CSV files
+
+Excel and CSV files are treated as a special datasource type. SQLBot imports the file into its internal PostgreSQL store, making the data queryable just like any other database.
+
+<Steps>
+  <Step title="Click Add and select Excel/CSV">
+    On the Add datasource form, choose **Excel/CSV** as the type.
+  </Step>
+
+  <Step title="Upload your file">
+    Drag and drop or browse to your `.xlsx`, `.xls`, or `.csv` file. SQLBot previews the detected columns and inferred data types before importing.
+  </Step>
+
+  <Step title="Confirm column types">
+    Review the inferred field types (string, integer, decimal, and so on). Adjust any types that were detected incorrectly, then click **Import**.
+
+    ```text
+    Supported file formats: .xlsx  .xls  .csv
+    ```
+  </Step>
+
+  <Step title="Name the datasource and save">
+    Give the datasource a recognizable name and click **Save**. The file's sheets become queryable tables.
+  </Step>
+</Steps>
+
+<Note>
+  Each sheet in an `.xlsx` file becomes a separate table. For `.csv` files, a single table named `Sheet1` is created. Table names are auto-generated with a short unique suffix to avoid collisions.
+</Note>
+
+## Syncing schema changes
+
+If your database schema changes after initial setup — new columns are added, tables are renamed — you can resync the field list for a table without removing and recreating the datasource:
+
+1. Open the datasource and select the table.
+2. Click **Sync fields**.
+3. SQLBot fetches the latest column list from the live database and reconciles it with what it has stored. New fields are added; removed fields are marked inactive.
+
+## Managing existing datasources
+
+From the datasource list you can:
+
+- **Edit** a datasource to update connection credentials or rename it.
+- **Test** an existing connection at any time to verify it is still reachable.
+- **Delete** a datasource, which also removes all associated table and field metadata. Any chat sessions that referenced the datasource will no longer be able to regenerate queries.
+
+<Warning>
+  Deleting a datasource is permanent. All table selections, field descriptions, terminology entries, and SQL training examples linked to it will be lost.
+</Warning>

@@ -1,0 +1,147 @@
+---
+title: "Managing SQLBot user accounts and workspace memberships"
+description: "Create, activate, and manage SQLBot user accounts as a global admin. Assign users to workspaces, configure roles, and reset passwords."
+---
+
+User management in SQLBot gives global administrators full control over who can sign in, which workspaces each person belongs to, and whether an account is active. Every action described on this page requires the built-in **admin** role — regular members and workspace admins cannot access these settings.
+
+## The user list
+
+Navigate to **System Settings → Users** to see a paginated list of all accounts. You can filter the list by typing into the search box, which matches against the username (account), display name, and email address simultaneously. You can also filter by account status (active or inactive) or by workspace membership.
+
+<Note>
+The built-in **admin** account (ID 1) is always excluded from the list. It cannot be deleted or demoted.
+</Note>
+
+## Creating a user
+
+<Steps>
+  <Step title="Open the user creation form">
+    Click **Add user** in the top-right corner of the Users page.
+  </Step>
+  <Step title="Fill in the required fields">
+    Complete all required fields:
+
+    | Field | Description |
+    |---|---|
+    | **Account** (username) | Unique login identifier. Cannot be changed after creation. |
+    | **Name** (display name) | The name shown in the UI. Must be unique across all users. |
+    | **Email** | Must be a valid email address format. |
+    | **Status** | Set to **Active** (1) to allow immediate sign-in, or **Inactive** (0) to create the account without granting access. |
+  </Step>
+  <Step title="Assign workspaces (optional)">
+    Select one or more workspaces from the workspace selector. The user will be added to each selected workspace as a regular member. If you skip this step, you can assign workspaces later from the user detail view.
+  </Step>
+  <Step title="Save the user">
+    Click **Confirm**. The system sends the user a welcome email and sets their initial password to the system default (`SQLBot@123456` unless your admin has changed `DEFAULT_PWD`).
+  </Step>
+</Steps>
+
+<Warning>
+Share the default password with the user through a secure channel and instruct them to change it immediately after first sign-in.
+</Warning>
+
+## Batch importing users
+
+For large onboarding operations, SQLBot supports uploading users from an Excel file.
+
+<Steps>
+  <Step title="Download the template">
+    Click **Download template** to get the import spreadsheet with the correct column headers.
+  </Step>
+  <Step title="Fill in the spreadsheet">
+    Add one user per row. Follow the same field requirements as manual creation: account, name, email, and status.
+  </Step>
+  <Step title="Upload the file">
+    Click **Batch import** and select your completed file. SQLBot processes each row and reports any validation errors.
+  </Step>
+  <Step title="Review errors">
+    If any rows failed, download the error report via **Download error record** to see which rows need correction, then re-upload the fixed file.
+  </Step>
+</Steps>
+
+## Editing a user
+
+Click a user's row to open the detail panel. You can update the display name, email address, workspace assignments, and status. The **account** (username) field is locked after creation and cannot be modified.
+
+When you change workspace assignments, the system automatically updates the user's active workspace context: if their current workspace is removed from the list, they are switched to their first remaining workspace.
+
+## Activating and deactivating accounts
+
+<Tabs>
+  <Tab title="Activate">
+    Open the user's detail panel and set **Status** to **Active**, or use the status toggle directly in the user list. The change takes effect immediately — the user can sign in without logging out.
+  </Tab>
+  <Tab title="Deactivate">
+    Set **Status** to **Inactive**. The user's active session cache is cleared and they will be blocked from signing in. Any in-progress queries are not interrupted, but new requests will be rejected.
+  </Tab>
+</Tabs>
+
+## Resetting a password
+
+To reset a user's password to the system default:
+
+<Steps>
+  <Step title="Locate the user">
+    Find the user in the user list.
+  </Step>
+  <Step title="Trigger the reset">
+    Click the **Reset password** action (the key icon). SQLBot sets the user's password to the configured default value and clears their session cache.
+  </Step>
+  <Step title="Notify the user">
+    Tell the user their password has been reset to the default. They should change it immediately from their profile settings.
+  </Step>
+</Steps>
+
+<Tip>
+Users can change their own password at any time from their profile page. Passwords must be 8–20 characters and include at least one uppercase letter, one lowercase letter, one digit, and one special character.
+</Tip>
+
+## Deleting a user
+
+Select one or more users in the list and click **Delete**. You can also delete a single user from their detail panel.
+
+<Warning>
+The admin account (ID 1) cannot be deleted. Attempting to delete it will return an error. All other accounts can be removed, which also removes their workspace memberships.
+</Warning>
+
+## Workspace membership
+
+Each user can belong to multiple workspaces at once. Users only see the datasources, conversations, and assistants that belong to their currently active workspace.
+
+### Assigning a user to a workspace
+
+You can assign workspaces in two places:
+
+- **From the Users page:** open the user detail panel and add workspaces to the **Workspace** field.
+- **From the Workspace members page:** navigate to **System Settings → Workspaces → Members** and add users directly.
+
+### Workspace roles
+
+Within each workspace, a user holds one of two roles:
+
+<CardGroup cols={2}>
+  <Card title="Regular member" icon="user">
+    Default role (`weight = 0`). Can use chat, run SQL queries, and access all datasources assigned to the workspace. Cannot manage workspace members or settings.
+  </Card>
+  <Card title="Workspace admin" icon="shield">
+    Elevated role (`weight` set to admin level). Can add and remove members within the workspace and manage workspace datasources. Cannot access global admin settings.
+  </Card>
+</CardGroup>
+
+### Promoting a user to workspace admin
+
+Navigate to **System Settings → Workspaces**, select a workspace, and open the **Members** tab. Find the user and change their role to **Workspace Admin**.
+
+### Removing a user from a workspace
+
+From the workspace members list, select the user and click **Remove**. If this was their active workspace, SQLBot automatically switches them to another workspace they belong to, or resets their workspace context if no other assignments exist.
+
+## Changing the interface language
+
+Each user can set their preferred interface language independently. The supported locales are:
+
+- `zh-CN` — Simplified Chinese (default for new accounts)
+- `zh-TW` — Traditional Chinese
+- `en` — English
+- `ko-KR` — Korean

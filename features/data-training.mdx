@@ -1,0 +1,170 @@
+---
+title: "Improving SQL Accuracy with Data Training Examples"
+description: "Add question-to-SQL example pairs that teach SQLBot the correct query patterns for your database, improving accuracy through few-shot retrieval."
+---
+
+Data training is a library of example pairs: a natural language question matched with the correct SQL query that answers it. When you submit a question in chat, SQLBot searches this library using semantic similarity and retrieves the most relevant examples. Those examples are included in the LLM prompt as few-shot demonstrations — concrete evidence of the correct SQL patterns, table names, and join logic specific to your database. The more relevant examples SQLBot can find, the more accurately it generates new queries.
+
+## Why data training matters
+
+Out of the box, SQLBot relies on table structure, column descriptions, and terminology entries to understand your schema. For simple queries ("How many orders did we receive today?"), this is often sufficient. But complex queries involving multi-table joins, subqueries, window functions, or company-specific conventions are harder to get right from schema context alone. Data training examples give SQLBot a direct reference for patterns it has seen before.
+
+<CardGroup cols={2}>
+  <Card title="Complex JOINs" icon="link">
+    If your schema requires a specific sequence of joins across four tables to answer revenue questions, an example showing that join pattern is far more reliable than leaving the LLM to infer it.
+  </Card>
+  <Card title="Unusual conventions" icon="wrench">
+    Tables with non-standard naming, status columns stored as integers, or composite primary keys are difficult to use correctly without examples showing the right approach.
+  </Card>
+  <Card title="Aggregate patterns" icon="chart-bar">
+    Examples for common aggregation questions (daily active users, 7-day rolling averages, cohort retention) save the LLM from having to reconstruct these patterns from scratch every time.
+  </Card>
+  <Card title="Filtered subsets" icon="filter">
+    Questions that always need a specific WHERE clause (for example, excluding test accounts or internal users) are much more reliably handled with an example that demonstrates the required filter.
+  </Card>
+</CardGroup>
+
+## How examples are retrieved
+
+When you ask a question, SQLBot embeds your question as a vector and searches the data training library for the most semantically similar stored questions. The top matching examples are injected into the prompt as context. Examples are stored in the `data_training` table with a `pgvector` embedding and matched via similarity search at query time.
+
+<Note>
+  Examples are workspace-scoped. Training examples created in one workspace do not affect query generation in other workspaces.
+</Note>
+
+## Adding an example
+
+<Steps>
+  <Step title="Open the Data Training section">
+    In the left sidebar, navigate to **Data Training**. The list shows all examples already saved in your workspace.
+  </Step>
+
+  <Step title="Click Add">
+    Click **Add** to open the example editor.
+  </Step>
+
+  <Step title="Write the question">
+    In the **Question** field, write the natural language question exactly as a user is likely to ask it. Use realistic phrasing — the similarity search compares your users' actual questions against these stored questions.
+
+    ```text
+    What was the total revenue by product category for Q1 2025?
+    ```
+  </Step>
+
+  <Step title="Write the correct SQL">
+    In the **SQL** field, write the query that correctly answers the question using your actual table and column names. The SQL should be complete and executable.
+
+    ```sql
+    SELECT
+        p.category,
+        SUM(o.amount) AS total_revenue
+    FROM orders o
+    JOIN products p ON o.product_id = p.id
+    WHERE o.created_at >= '2025-01-01'
+      AND o.created_at < '2025-04-01'
+      AND o.status = 'completed'
+    GROUP BY p.category
+    ORDER BY total_revenue DESC
+    ```
+
+    <Tip>
+      Always test the SQL against your actual database before saving it as a training example. An incorrect example teaches SQLBot the wrong pattern.
+    </Tip>
+  </Step>
+
+  <Step title="Select the datasource">
+    Choose which datasource this example applies to. Examples are matched to the active datasource in the chat session — an example linked to your production database will not be retrieved during queries against your analytics warehouse.
+  </Step>
+
+  <Step title="Save">
+    Click **Save**. SQLBot generates an embedding for the question and the example is immediately available for retrieval.
+  </Step>
+</Steps>
+
+## Best practices for training examples
+
+<AccordionGroup>
+  <Accordion title="Cover your most common query patterns">
+    Start with the questions your team asks most frequently. Ten well-chosen examples for your top query types will deliver more value than a hundred examples covering rare edge cases.
+  </Accordion>
+
+  <Accordion title="Include examples for every JOIN in your schema">
+    Each table-to-table relationship that users might query across is worth at least one example. SQLBot learns from the join condition, the alias conventions, and the column references in each example.
+
+    ```sql
+    -- Example: joining users to their workspace assignments
+    SELECT u.name, w.name AS workspace
+    FROM users u
+    JOIN user_ws uw ON u.id = uw.uid
+    JOIN workspaces w ON uw.oid = w.id
+    WHERE u.status = 'active'
+    ```
+  </Accordion>
+
+  <Accordion title="Show the correct filter for restricted data">
+    If certain queries should always exclude test records, internal users, or deleted rows, add an example that demonstrates the required filter:
+
+    ```sql
+    -- Always exclude test accounts when counting active users
+    SELECT COUNT(DISTINCT id)
+    FROM users
+    WHERE status = 'active'
+      AND is_test_account = false
+      AND deleted_at IS NULL
+    ```
+  </Accordion>
+
+  <Accordion title="Add examples for date and time arithmetic">
+    Date handling varies between database engines. Examples that show the correct syntax for your specific database prevent the LLM from using functions that work in MySQL but not in your PostgreSQL instance:
+
+    ```sql
+    -- PostgreSQL: last 30 days
+    SELECT COUNT(*) FROM orders
+    WHERE created_at >= NOW() - INTERVAL '30 days'
+
+    -- MySQL equivalent
+    SELECT COUNT(*) FROM orders
+    WHERE created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+    ```
+  </Accordion>
+
+  <Accordion title="Write questions that sound like your users">
+    The question text in a training example is what gets compared against incoming user questions. Write questions the way your actual users talk, not the way a database engineer would describe a query. Multiple variations covering different phrasings of the same question help retrieval accuracy.
+  </Accordion>
+</AccordionGroup>
+
+## Bulk importing examples
+
+If you have many examples to add, import them from a spreadsheet:
+
+<Steps>
+  <Step title="Download the template">
+    Click **Download template** to get an `.xlsx` file. The template includes sample data showing the correct structure:
+
+    ```text
+    Column 1: Question (natural language)
+    Column 2: SQL (the correct query)
+    Column 3: Datasource name
+    ```
+  </Step>
+
+  <Step title="Fill in the spreadsheet">
+    Each row is one question-SQL pair. The datasource name must match the exact name of a datasource in your workspace.
+  </Step>
+
+  <Step title="Upload">
+    Click **Import** and select your filled spreadsheet. SQLBot processes each row and reports the number of examples successfully created, duplicated, and failed.
+
+    <Note>
+      If any rows fail — for example because the datasource name does not match — SQLBot produces a downloadable error report showing which rows failed and why.
+    </Note>
+  </Step>
+</Steps>
+
+## Enabling and disabling examples
+
+Each example has an enabled/disabled toggle. Disabling an example removes it from retrieval without deleting it. This is useful when a schema change makes an example temporarily incorrect — disable it during the migration, update the SQL, then re-enable it.
+
+## Exporting examples
+
+Click **Export** to download all examples in your workspace as an `.xlsx` file. Use this for backup, sharing example sets with a new workspace, or reviewing your training coverage offline.

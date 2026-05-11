@@ -1,0 +1,92 @@
+{
+  "projectType": "saas",
+  "projectName": "SQLBot",
+  "projectDescription": "An intelligent conversational data analysis platform that uses large language models and RAG to convert natural language questions into SQL queries and visualizations.",
+  "theme": "palm",
+  "primaryColor": "#2aa9be",
+  "lightColor": "#8ddf99",
+  "darkColor": null,
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "how-it-works"
+            ]
+          },
+          {
+            "group": "Deployment",
+            "pages": [
+              "deployment/docker",
+              "deployment/docker-compose",
+              "deployment/offline",
+              "deployment/configuration"
+            ]
+          },
+          {
+            "group": "Core Features",
+            "pages": [
+              "features/datasources",
+              "features/chat-analysis",
+              "features/workspaces",
+              "features/assistants",
+              "features/terminology",
+              "features/data-training"
+            ]
+          },
+          {
+            "group": "Integrations",
+            "pages": [
+              "integrations/mcp",
+              "integrations/embedding",
+              "integrations/api-keys",
+              "integrations/third-party"
+            ]
+          },
+          {
+            "group": "Administration",
+            "pages": [
+              "admin/users",
+              "admin/llm-models",
+              "admin/permissions",
+              "admin/settings"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Text-to-SQL generation using LLMs and RAG",
+    "Conversational data analysis (ChatBI)",
+    "Multi-tenant workspace isolation",
+    "Support for 12+ LLM providers (OpenAI, DeepSeek, Gemini, etc.)",
+    "Multiple database connector support (MySQL, PostgreSQL, ClickHouse, Elasticsearch, etc.)",
+    "Web embedding and pop-up integration",
+    "MCP (Model Context Protocol) server for AI agent integration",
+    "Terminology library and SQL example calibration for improved accuracy",
+    "Fine-grained data permissions",
+    "Data visualization and chart generation"
+  ],
+  "publicApiSurface": [
+    "POST /api/v1/mcp/mcp_start — Authenticate and create a chat session for MCP",
+    "POST /api/v1/mcp/mcp_question — Submit a natural language question and get SQL + results",
+    "POST /api/v1/mcp/mcp_ws_list — List workspaces accessible to the user",
+    "POST /api/v1/mcp/mcp_ds_list — List datasources accessible to the user",
+    "GET /api/v1/datasource/list — List available datasources",
+    "POST /api/v1/datasource/add — Add a new datasource",
+    "POST /api/v1/datasource/check — Test datasource connection",
+    "GET /api/v1/system/aimodel — List configured LLM models",
+    "POST /api/v1/system/aimodel — Add a new LLM model",
+    "GET /api/v1/system/workspace — List all workspaces",
+    "POST /api/v1/system/workspace — Create a new workspace",
+    "GET /api/v1/system/assistant — List embedded assistants",
+    "POST /api/v1/chat — Start a chat session",
+    "GET /api/v1/system/apikey — List API keys"
+  ]
+}

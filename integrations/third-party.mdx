@@ -1,0 +1,188 @@
+---
+title: "Third-Party Integrations: n8n, Dify, MaxKB, and More"
+description: "Connect SQLBot with n8n, Dify, MaxKB, DataEase, and 1Panel. Use the MCP server for agent workflows or the embed widget for web application integration."
+---
+
+SQLBot integrates with several popular platforms, either as an MCP tool for AI agents or as an embeddable widget in web applications. This page describes what each integration enables and how to get started.
+
+<CardGroup cols={3}>
+  <Card title="n8n" icon="workflow">
+    Use SQLBot as a tool node in n8n automation workflows.
+  </Card>
+  <Card title="Dify" icon="bot">
+    Connect SQLBot as an MCP tool inside Dify agent applications.
+  </Card>
+  <Card title="MaxKB" icon="brain">
+    Call SQLBot from MaxKB agent workflows for live data lookups.
+  </Card>
+  <Card title="DataEase" icon="chart-bar">
+    Native integration with the DataEase BI platform — SQLBot is built by the DataEase team.
+  </Card>
+  <Card title="1Panel" icon="server">
+    Deploy and manage SQLBot directly from the 1Panel application store.
+  </Card>
+</CardGroup>
+
+All agent-based integrations (n8n, Dify, MaxKB) connect through the [MCP server](/integrations/mcp) running on port `8001`. Website embedding uses the [embedding integration](/integrations/embedding).
+
+---
+
+## Platform setup
+
+<AccordionGroup>
+  <Accordion title="n8n">
+    n8n is a workflow automation platform that can call external tools via HTTP or MCP. You can use SQLBot in n8n to answer data questions as part of a larger automation — for example, generating a sales summary and sending it to Slack, or answering a user's question in a chatbot workflow.
+
+    **What it enables:**
+    - Trigger SQL queries from any n8n workflow event (webhook, schedule, form submission, etc.)
+    - Combine SQLBot's query results with other n8n nodes (email, Slack, Google Sheets, etc.)
+    - Build AI-powered data pipelines without writing SQL
+
+    **Setup:**
+
+    <Steps>
+      <Step title="Ensure the MCP server is reachable">
+        Confirm that `http://<your-sqlbot-host>:8001` is accessible from your n8n instance. If n8n is running in a separate environment, you may need to open port `8001` in your firewall or configure a tunnel.
+      </Step>
+      <Step title="Add an HTTP Request node for authentication">
+        Add an **HTTP Request** node to your workflow that POSTs to `/mcp/mcp_start` with your credentials. Store the returned `access_token` and `chat_id` in workflow variables using the **Set** node.
+
+        ```http
+        POST http://<your-sqlbot-host>:8001/mcp/mcp_start
+        Content-Type: application/json
+
+        {
+          "username": "{{ $vars.SQLBOT_USER }}",
+          "password": "{{ $vars.SQLBOT_PASSWORD }}"
+        }
+        ```
+      </Step>
+      <Step title="Add an MCP Client Tool node or HTTP Request node">
+        For structured tool use, add an **MCP Client Tool** node (n8n 1.88+) and point it to `http://<your-sqlbot-host>:8001/mcp`. For simpler flows, add a second **HTTP Request** node targeting `/mcp/mcp_question` directly, passing the token and chat ID from the previous step.
+      </Step>
+      <Step title="Process the result">
+        The `mcp_question` response includes the generated SQL, query results, and optionally a chart image URL. Wire the output into downstream nodes to send reports, populate spreadsheets, or trigger follow-up actions.
+      </Step>
+    </Steps>
+
+    <Tip>
+      Store SQLBot credentials in n8n's **Credentials** or **Variables** store rather than hardcoding them in node parameters.
+    </Tip>
+  </Accordion>
+
+  <Accordion title="Dify">
+    Dify is an LLM application development platform. You can register SQLBot as an MCP tool inside a Dify agent, giving the agent the ability to answer questions backed by real database queries.
+
+    **What it enables:**
+    - Data-grounded answers in Dify chatbot and agent applications
+    - SQLBot handles datasource selection and SQL generation; Dify handles the conversation flow
+    - Works alongside other Dify tools (web search, knowledge base retrieval, etc.)
+
+    **Setup:**
+
+    <Steps>
+      <Step title="Open the Tools panel in Dify">
+        Navigate to your Dify workspace and go to **Tools** → **Custom** → **Add Tool**.
+      </Step>
+      <Step title="Register the MCP server">
+        Set the **Tool Server URL** to `http://<your-sqlbot-host>:8001/mcp` and save. Dify will discover the available operations (`mcp_start`, `mcp_question`, `mcp_ws_list`, `mcp_datasource_list`) automatically from the MCP schema.
+      </Step>
+      <Step title="Enable the tool in your agent">
+        Open your agent configuration, go to the **Tools** section, and enable the SQLBot tools you need. At minimum, enable `mcp_start` and `mcp_question`.
+      </Step>
+      <Step title="Set agent instructions">
+        In the agent's system prompt, instruct it to call `mcp_start` with the SQLBot credentials before answering any data question. Store the token and chat ID in the agent's context for subsequent calls.
+
+        ```text
+        When a user asks a data question, first call mcp_start to obtain an
+        access_token and chat_id, then call mcp_question with those values.
+        ```
+      </Step>
+    </Steps>
+  </Accordion>
+
+  <Accordion title="MaxKB">
+    MaxKB is an open-source knowledge base and agent platform. SQLBot can be added as a tool step in a MaxKB workflow, enabling agents to retrieve live database results in response to user queries.
+
+    **What it enables:**
+    - Live data lookup alongside MaxKB's document-based retrieval
+    - Natural language questions answered with real query results, not just static knowledge
+    - Works in any MaxKB workflow that includes a tool step
+
+    **Setup:**
+
+    <Steps>
+      <Step title="Create or open a workflow">
+        In MaxKB, open the workflow for the agent that needs data access.
+      </Step>
+      <Step title="Add a tool step for mcp_start">
+        Add a **Tool** step configured to POST to `/mcp/mcp_start` with your SQLBot credentials. Save the `access_token` and `chat_id` from the response into workflow variables.
+      </Step>
+      <Step title="Add a tool step for mcp_question">
+        Add a second **Tool** step configured to POST to `/mcp/mcp_question`. Map the user's input message to the `question` parameter, and pass the stored token and chat ID from the previous step.
+
+        ```json
+        {
+          "token": "{{ token }}",
+          "chat_id": "{{ chat_id }}",
+          "question": "{{ user_input }}",
+          "stream": false,
+          "return_img": false
+        }
+        ```
+      </Step>
+      <Step title="Return the result to the user">
+        Configure the workflow to surface the query result in the agent's reply. Use `return_img: false` and `stream: false` for the cleanest structured output to parse.
+      </Step>
+    </Steps>
+  </Accordion>
+
+  <Accordion title="DataEase">
+    SQLBot is developed by the [DataEase](https://dataease.io) team — the same team behind the open-source BI and data visualization platform. This shared origin means SQLBot is designed to complement DataEase workflows rather than replace them.
+
+    **What it enables:**
+    - Use SQLBot for exploratory, conversational analysis while DataEase handles structured dashboards and reports
+    - Share the same underlying database connections — configure your datasources once in SQLBot and use them for both ad-hoc queries and DataEase visualizations
+    - DataEase users can access SQLBot from a familiar support and release ecosystem
+
+    **Integration approach:**
+
+    Because SQLBot and DataEase can connect to the same databases, there is no special connector to install. Point both tools at the same database host, configure the datasource in each application, and use them side by side.
+
+    For organizations running DataEase, the SQLBot embedding integration allows you to add a conversational data assistant directly to any DataEase-adjacent web application.
+
+    <Note>
+      SQLBot does not read DataEase dashboard definitions or datasets directly. Each tool maintains its own datasource registry. You configure connection details separately in each product.
+    </Note>
+  </Accordion>
+
+  <Accordion title="1Panel">
+    1Panel is a modern Linux server management panel with an application store. SQLBot is available directly from the 1Panel app store, making it straightforward to deploy and manage without using the command line.
+
+    **What it enables:**
+    - One-click deployment of SQLBot on any 1Panel-managed server
+    - Manage SQLBot's lifecycle (start, stop, update, uninstall) from the 1Panel UI
+    - Automatic port and volume configuration
+
+    **Setup:**
+
+    <Steps>
+      <Step title="Open the 1Panel app store">
+        Log in to your 1Panel instance and navigate to **App Store**.
+      </Step>
+      <Step title="Search for SQLBot">
+        Search for `SQLBot` in the app store and click **Install**.
+      </Step>
+      <Step title="Configure ports and volumes">
+        1Panel will prompt you for port assignments (default `8000` for the web UI and `8001` for the MCP server) and volume paths for persistent data. Accept the defaults or adjust them to fit your server's layout.
+      </Step>
+      <Step title="Complete installation">
+        Click **Confirm**. 1Panel pulls the `dataease/sqlbot` Docker image, creates the container with the configured mounts, and starts the service. Once the health check passes, click the application's URL to open SQLBot.
+      </Step>
+    </Steps>
+
+    <Tip>
+      After installation, use the 1Panel **Upgrade** button in the app's detail page to update SQLBot to newer releases without manually running `docker pull`.
+    </Tip>
+  </Accordion>
+</AccordionGroup>

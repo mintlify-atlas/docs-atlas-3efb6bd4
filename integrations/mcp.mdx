@@ -1,0 +1,238 @@
+---
+title: "MCP Server: Connect AI Agents to SQLBot via MCP"
+description: "SQLBot exposes a Model Context Protocol server on port 8001, letting AI agents like Claude Desktop, n8n, Dify, and MaxKB query your databases naturally."
+---
+
+SQLBot runs a dedicated [Model Context Protocol (MCP)](https://modelcontextprotocol.io) server on port `8001`, separate from the main application. Any MCP-compatible agent or workflow tool can connect to it and ask questions in plain language — SQLBot handles the SQL generation, query execution, and result formatting automatically.
+
+## How it works
+
+The MCP server exposes six operations, each mapped to a tool that agents can invoke:
+
+<CardGroup cols={2}>
+  <Card title="mcp_start" icon="key">
+    Authenticate with username and password. Returns an `access_token` and a `chat_id` for the session.
+  </Card>
+  <Card title="mcp_question" icon="message-circle">
+    Submit a natural-language question. Returns structured data, SQL, and optionally a chart image.
+  </Card>
+  <Card title="mcp_ws_list" icon="layers">
+    List the workspaces the authenticated user has access to.
+  </Card>
+  <Card title="mcp_datasource_list" icon="database">
+    List the datasources available within a workspace.
+  </Card>
+  <Card title="mcp_assistant" icon="robot">
+    Ask a question through a specific SQLBot assistant configuration, for use in DataEase and CRM integrations.
+  </Card>
+  <Card title="get_model_list" icon="cpu">
+    Retrieve the list of configured LLM models available in the deployment.
+  </Card>
+</CardGroup>
+
+<Note>
+  Port `8001` must be reachable from your agent or workflow host. If SQLBot is behind a reverse proxy, make sure you forward this port or expose the MCP path separately.
+</Note>
+
+## Authentication flow
+
+All MCP operations except `mcp_start` require a valid `access_token`. Tokens are short-lived JWTs issued by the same mechanism as the main application.
+
+<Steps>
+  <Step title="Call mcp_start to obtain a token">
+    POST to `/mcp/mcp_start` with your SQLBot username and password. The response includes both a token and a fresh `chat_id` bound to that session.
+
+    ```http
+    POST http://<your-host>:8001/mcp/mcp_start
+    Content-Type: application/json
+
+    {
+      "username": "admin",
+      "password": "SQLBot@123456"
+    }
+    ```
+
+    ```json
+    {
+      "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+      "chat_id": 7356228649239973888
+    }
+    ```
+  </Step>
+
+  <Step title="Discover available workspaces (optional)">
+    If your user belongs to multiple workspaces, call `mcp_ws_list` to find the `oid` (workspace ID) you want to query against.
+
+    ```http
+    POST http://<your-host>:8001/mcp/mcp_ws_list
+    Content-Type: application/json
+
+    {
+      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+    }
+    ```
+  </Step>
+
+  <Step title="Discover datasources (optional)">
+    Call `mcp_datasource_list` to get the IDs of datasources available in your workspace. Pass `oid` to target a specific workspace.
+
+    ```http
+    POST http://<your-host>:8001/mcp/mcp_datasource_list
+    Content-Type: application/json
+
+    {
+      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+      "oid": "1"
+    }
+    ```
+
+    The response omits sensitive fields (`embedding`, `table_relation`, `configuration`) and returns a clean list of datasource metadata.
+  </Step>
+
+  <Step title="Ask a question with mcp_question">
+    Submit your natural-language question. SQLBot selects the right datasource (or uses the one you specify), generates SQL, executes the query, and returns the result.
+
+    ```http
+    POST http://<your-host>:8001/mcp/mcp_question
+    Content-Type: application/json
+
+    {
+      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+      "chat_id": 7356228649239973888,
+      "question": "What were total sales by region last month?",
+      "datasource_id": 3,
+      "lang": "en",
+      "oid": "1",
+      "stream": false,
+      "return_img": false
+    }
+    ```
+  </Step>
+</Steps>
+
+## mcp_question parameters
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `token` | string | Yes | Access token from `mcp_start`. |
+| `chat_id` | integer | Yes | Chat session ID from `mcp_start`. |
+| `question` | string | Yes | Natural-language question to answer. |
+| `datasource_id` | integer or string | No | Pin the query to a specific datasource. If omitted and the session has no datasource set, SQLBot selects automatically. |
+| `lang` | string | No | Response language: `zh-CN`, `zh-TW`, `en`, or `ko-KR`. Defaults to `zh-CN`. |
+| `oid` | string | No | Workspace ID. Effective only when `datasource_id` is not provided. Defaults to the user's last-used workspace. |
+| `stream` | boolean | No | Stream the response as server-sent events. Defaults to `true`. Set to `false` to receive a single JSON object. |
+| `return_img` | boolean | No | Include a base64 chart image in the response. Defaults to `true`. Set to `false` to return data only. |
+
+<Tip>
+  For agent integrations where you want structured, parseable output, use `stream: false` and `return_img: false`. This gives you a clean JSON object with the SQL query, result data, and a text summary.
+</Tip>
+
+## Connecting external agents
+
+<Tabs>
+  <Tab title="Claude Desktop">
+    Claude Desktop supports MCP servers through its configuration file. Add SQLBot as a custom MCP server so Claude can call `mcp_start` and `mcp_question` as tools during conversations.
+
+    Open your Claude Desktop configuration file and add a server entry pointing to the SQLBot MCP endpoint:
+
+    ```json
+    {
+      "mcpServers": {
+        "sqlbot": {
+          "url": "http://<your-host>:8001/mcp",
+          "type": "http"
+        }
+      }
+    }
+    ```
+
+    After restarting Claude Desktop, you will see the SQLBot tools listed in the tool picker. Authenticate by asking Claude to call `mcp_start` with your credentials, then ask data questions normally.
+  </Tab>
+
+  <Tab title="n8n">
+    In n8n, add an **MCP Client Tool** node and configure it to point to your SQLBot MCP server.
+
+    <Steps>
+      <Step title="Add an MCP Client Tool node">
+        In your workflow canvas, add a new node and search for **MCP Client Tool** (available in n8n 1.88+).
+      </Step>
+      <Step title="Configure the server URL">
+        Set the **Server URL** to `http://<your-host>:8001/mcp`. No authentication header is needed at the transport level — authentication happens via the `mcp_start` tool call.
+      </Step>
+      <Step title="Authenticate in your workflow">
+        Add a preceding **HTTP Request** node that calls `mcp_start` and stores the `access_token` and `chat_id` in workflow variables.
+      </Step>
+      <Step title="Pass the token to mcp_question">
+        Use an expression to pass the stored token and chat ID into the MCP tool node when invoking `mcp_question`.
+      </Step>
+    </Steps>
+  </Tab>
+
+  <Tab title="Dify">
+    Dify supports MCP tools through its **Tools** settings panel.
+
+    <Steps>
+      <Step title="Open Tools settings">
+        In your Dify workspace, navigate to **Tools** → **Custom** → **Add Tool**.
+      </Step>
+      <Step title="Set the MCP endpoint">
+        Enter `http://<your-host>:8001/mcp` as the tool server URL and save.
+      </Step>
+      <Step title="Authorize the tool in your agent">
+        Open your agent configuration and enable the SQLBot tools. In the agent's system prompt, instruct it to call `mcp_start` first before answering data questions.
+      </Step>
+    </Steps>
+  </Tab>
+
+  <Tab title="MaxKB">
+    MaxKB can call external tools via its workflow engine.
+
+    <Steps>
+      <Step title="Create a new workflow">
+        In MaxKB, create or open the workflow for the agent that needs data access.
+      </Step>
+      <Step title="Add a tool node">
+        Add a **Tool** step and set the endpoint to `http://<your-host>:8001/mcp/mcp_question`. Configure the input parameters to map from the user's message.
+      </Step>
+      <Step title="Handle authentication">
+        Add a preceding step that calls `mcp_start` and stores the token in a workflow variable. Pass that variable into the `mcp_question` node as the `token` parameter.
+      </Step>
+    </Steps>
+  </Tab>
+</Tabs>
+
+## MCP server internals
+
+From `backend/main.py`, the MCP server is a separate FastAPI application mounted via `fastapi-mcp`:
+
+```python
+mcp_app = FastAPI()
+images_path = settings.MCP_IMAGE_PATH
+os.makedirs(images_path, exist_ok=True)
+mcp_app.mount("/images", StaticFiles(directory=images_path), name="images")
+
+mcp = FastApiMCP(
+    app,
+    name="SQLBot MCP Server",
+    description="SQLBot MCP Server",
+    describe_all_responses=True,
+    describe_full_response_schema=True,
+    include_operations=[
+        "mcp_datasource_list",
+        "get_model_list",
+        "mcp_question",
+        "mcp_start",
+        "mcp_assistant",
+        "mcp_ws_list"
+    ]
+)
+
+mcp.mount(mcp_app)
+mcp.setup_server()
+```
+
+The `images` static mount means chart images generated by `mcp_question` (when `return_img: true`) are stored on disk and served at `http://<your-host>:8001/images/<filename>`.
+
+<Warning>
+  Tokens issued by `mcp_start` expire according to the `ACCESS_TOKEN_EXPIRE_MINUTES` setting in your SQLBot configuration. If your agent receives a `403` response, call `mcp_start` again to refresh the token.
+</Warning>

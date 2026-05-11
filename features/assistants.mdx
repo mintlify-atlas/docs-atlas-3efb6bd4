@@ -1,0 +1,128 @@
+---
+title: "Creating and Embedding SQLBot Assistant Applications"
+description: "Assistants are embeddable SQLBot instances you can configure with a specific datasource, appearance, and domain whitelist for use in other applications."
+---
+
+An assistant is a customized, embeddable version of SQLBot that you can place inside another web application or internal tool. Instead of directing users to the main SQLBot dashboard, you configure an assistant with its own name, a specific datasource it can access, and the domains where it is allowed to be embedded. Users interact with the assistant through a chat widget that feels native to your application.
+
+<Info>
+  Only workspace admins can create and configure assistants. Creating an assistant requires at least one datasource to already be connected to your workspace.
+</Info>
+
+## Assistant types
+
+SQLBot supports two assistant types:
+
+<CardGroup cols={2}>
+  <Card title="Standard assistant" icon="message-circle">
+    A standalone embedded chat widget. Point it at any datasource in your workspace and embed it in any web app using a script tag. Configure the appearance, system prompt, and allowed embedding domains.
+  </Card>
+  <Card title="DataEase integration" icon="plug">
+    A specialized assistant type for embedding inside DataEase BI dashboards. Uses DataEase's own datasource layer rather than a SQLBot-managed connection.
+  </Card>
+</CardGroup>
+
+## Creating an assistant
+
+<Steps>
+  <Step title="Open the Assistants section">
+    In the left sidebar, navigate to **Assistants**. The list shows all assistants in your current workspace.
+  </Step>
+
+  <Step title="Click Create">
+    Click **Create** to open the configuration panel.
+  </Step>
+
+  <Step title="Give the assistant a name">
+    Enter a name that describes the assistant's purpose or audience, for example "Sales Analytics Bot" or "HR Data Assistant". The name appears in the chat widget header by default.
+  </Step>
+
+  <Step title="Select the assistant type">
+    Choose **Standard** for a regular embedded chat widget. Choose **DataEase** only if you are integrating with a DataEase installation.
+  </Step>
+
+  <Step title="Configure the datasource access">
+    For a standard assistant, choose which datasources from your workspace it can access. You can allow access to all workspace datasources (online mode) or restrict it to a specific list (offline mode with a public list).
+
+    ```json
+    {
+      "oid": 1,
+      "public_list": [42, 57]
+    }
+    ```
+
+    In the example above, `oid` is the workspace ID and `public_list` limits the assistant to datasources with IDs 42 and 57.
+  </Step>
+
+  <Step title="Set the domain whitelist">
+    In the **Domain** field, enter the origins where this assistant is allowed to be embedded (for example, `https://app.yourcompany.com`). SQLBot validates the `Origin` header of every embed request against this value. Requests from unlisted domains are rejected.
+
+    <Warning>
+      Leaving the domain field empty or set to a wildcard exposes the assistant to requests from any origin. Always restrict to specific domains in production.
+    </Warning>
+  </Step>
+
+  <Step title="Save">
+    Click **Save**. The assistant is created and an application ID (`app_id`) and secret are generated.
+  </Step>
+</Steps>
+
+## Customizing appearance
+
+After creating an assistant, open it and go to the **Appearance** tab to customize the embedded widget:
+
+<AccordionGroup>
+  <Accordion title="Logo">
+    Upload a logo (JPG, PNG, or SVG, maximum 10 MB) that appears in the chat widget header. If no logo is set, a default SQLBot icon is used.
+  </Accordion>
+  <Accordion title="Float icon">
+    Upload a custom icon (JPG, PNG, or SVG, maximum 10 MB) for the floating trigger button that users click to open the chat widget on your page.
+  </Accordion>
+  <Accordion title="Name and description">
+    The assistant's display name and a short tagline shown in the widget header.
+  </Accordion>
+  <Accordion title="Custom AI model">
+    If you want this assistant to use a different LLM than your workspace default, enable **Custom model** and select from the configured models. Useful when different teams require different model tiers or providers.
+  </Accordion>
+</AccordionGroup>
+
+## Getting the embed code
+
+Once your assistant is configured:
+
+1. Open the assistant and go to the **Embed** tab.
+2. Copy the provided `<script>` tag.
+3. Paste it into the `<head>` or `<body>` of your HTML page.
+
+The embed code passes your assistant's `app_id` to SQLBot and renders the floating chat widget. It looks similar to:
+
+```html
+<script
+  src="https://your-sqlbot-instance.com/embed.js"
+  data-app-id="your-app-id-here"
+  defer
+></script>
+```
+
+<Note>
+  The embed endpoint validates the request's `Origin` header against your configured domain whitelist before returning a session token. If the origin does not match, the widget will fail to load and log an invalid origin error.
+</Note>
+
+## Managing existing assistants
+
+From the assistant list you can:
+
+- **Edit** an assistant to update its name, datasource access, domain whitelist, or appearance.
+- **Delete** an assistant, which immediately invalidates its embed token and stops the widget from loading on any page.
+
+<Warning>
+  Deleting an assistant cannot be undone. If users are actively using the embedded widget when it is deleted, their session will fail immediately.
+</Warning>
+
+## Security considerations
+
+Assistants use short-lived JWT tokens to authenticate embedded sessions. Each token includes the workspace ID (`oid`) and assistant ID so that SQLBot can enforce datasource access restrictions even for anonymous embed users.
+
+<Tip>
+  Use separate assistants for different audiences rather than sharing one. This lets you tune the datasource access, appearance, and domain whitelist independently for each use case, and gives you cleaner audit logs.
+</Tip>

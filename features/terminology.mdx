@@ -1,0 +1,143 @@
+---
+title: "Defining Business Terms with the Terminology Library"
+description: "Build a domain-specific vocabulary dictionary that helps SQLBot generate accurate SQL by understanding your business's unique terms, metrics, and aliases."
+---
+
+The terminology library is a dictionary of business terms and their meanings. When you ask SQLBot a question, it searches the terminology library using semantic similarity and injects relevant definitions into the prompt before generating SQL. This means SQLBot understands that "GMV" refers to gross merchandise value before refunds, or that "active user" in your business means a user who logged in within the last 30 days — without you having to explain it every time.
+
+Without a terminology library, SQLBot relies solely on column names and table descriptions to understand your question. Domain-specific terms that differ from standard database naming — abbreviations, internal metric names, team-specific jargon — will often produce incorrect SQL. The terminology library closes this gap.
+
+## Why terminology matters
+
+<CardGroup cols={2}>
+  <Card title="Shared ambiguity" icon="circle-question">
+    Terms like "revenue", "users", and "orders" mean different things in different companies. Your terminology library captures your definitions specifically.
+  </Card>
+  <Card title="Abbreviations and aliases" icon="tag">
+    Column names are often abbreviated (`cst_cnt` for customer count). Defining the full meaning helps the LLM map natural language questions to the right columns.
+  </Card>
+  <Card title="Composite metrics" icon="calculator">
+    Metrics like "retention rate" or "churn" typically require specific SQL patterns across multiple tables. A clear definition helps SQLBot choose the right approach.
+  </Card>
+  <Card title="Synonyms" icon="arrows-left-right">
+    Your users may say "orders", "transactions", or "purchases" to mean the same thing. The terminology library lets you register all synonyms under one term.
+  </Card>
+</CardGroup>
+
+## How terms are used
+
+When you submit a question in chat, SQLBot embeds your query and retrieves the most semantically relevant terms from the terminology library using vector similarity search. The retrieved definitions are included in the LLM prompt as grounding context. Terms are stored with a `pgvector` embedding and matched at query time — SQLBot does not scan every definition on every request, it finds the most relevant ones.
+
+<Note>
+  Terms are workspace-scoped. A term you add in one workspace does not affect queries in another workspace.
+</Note>
+
+## Adding a term
+
+<Steps>
+  <Step title="Open the Terminology section">
+    In the left sidebar, navigate to **Terminology**. The list shows all terms already defined in your workspace.
+  </Step>
+
+  <Step title="Click Add">
+    Click **Add** to open the term editor.
+  </Step>
+
+  <Step title="Enter the term name">
+    In the **Term name** field, enter the word or phrase exactly as users are likely to say it in a question. For example: `GMV`, `active users`, `churn rate`.
+  </Step>
+
+  <Step title="Add synonyms (optional)">
+    In the **Synonyms** field, add alternative names for the same concept, separated by commas. For example, synonyms for `GMV` might include `gross merchandise value`, `gross sales`.
+  </Step>
+
+  <Step title="Write a description">
+    In the **Description** field, explain what this term means in your business context and, where helpful, how it maps to your database schema.
+
+    A useful description for `GMV`:
+
+    ```text
+    Gross merchandise value. The total value of all completed orders before
+    refunds, discounts, or platform fees are deducted. Calculated as:
+    SUM(order_amount) FROM orders WHERE status = 'completed'.
+    ```
+
+    A useful description for `active users`:
+
+    ```text
+    Users who have logged in at least once in the past 30 calendar days.
+    Use the last_login_at column in the users table.
+    ```
+  </Step>
+
+  <Step title="Choose datasource scope">
+    Decide whether this term applies to **all datasources** in the workspace, or only to specific ones. If your GMV calculation differs between your main database and a legacy system, create separate terms scoped to each datasource.
+  </Step>
+
+  <Step title="Save">
+    Click **Save**. SQLBot immediately generates an embedding for the new term, making it available for retrieval in future queries.
+  </Step>
+</Steps>
+
+## Examples of useful terms
+
+<AccordionGroup>
+  <Accordion title="Business metrics">
+    Define each KPI your team tracks. Include the SQL formula where it is unambiguous:
+
+    | Term | Description |
+    |------|-------------|
+    | `ARR` | Annual recurring revenue. Sum of all active subscription monthly amounts multiplied by 12. Use the `subscriptions` table where `status = 'active'`. |
+    | `NPS` | Net Promoter Score. Calculated from the `survey_responses` table as (% Promoters) - (% Detractors), where promoters have `score >= 9` and detractors have `score <= 6`. |
+    | `CAC` | Customer acquisition cost. Total marketing spend divided by new customers acquired in the same period. Marketing spend is in the `marketing_spend` table; new customers are in `users` where `created_at` is within the period. |
+  </Accordion>
+
+  <Accordion title="Table and column aliases">
+    Map the plain-language names your team uses to actual database identifiers:
+
+    | Term | Description |
+    |------|-------------|
+    | `orders` | The `fact_orders` table in the data warehouse. Includes all completed, refunded, and cancelled transactions. |
+    | `user ID` | The `uid` column in the `users` table. Used as a foreign key in `orders.customer_uid` and `sessions.user_uid`. |
+    | `store` | Refers to the `retail_location` table, not the `online_store` table, unless the user specifically says "online store". |
+  </Accordion>
+
+  <Accordion title="Status codes and enumerations">
+    Explain what numeric or string codes mean:
+
+    | Term | Description |
+    |------|-------------|
+    | `completed order` | An order where `orders.status = 'C'` or `orders.status = 'completed'`. |
+    | `active subscription` | A subscription where `subscriptions.state = 1` (1 = active, 2 = paused, 3 = cancelled). |
+  </Accordion>
+</AccordionGroup>
+
+## Bulk importing terms
+
+If you have many terms to add, you can import them from an Excel file:
+
+<Steps>
+  <Step title="Download the template">
+    Click **Download template** to get an `.xlsx` file with the correct column structure: Term name, Synonyms, Description, Effective datasources, All datasources (Y/N).
+  </Step>
+
+  <Step title="Fill in the spreadsheet">
+    Each row is one term. Set **All datasources** to `Y` to apply the term workspace-wide, or `N` and list specific datasource names in the **Effective datasources** column.
+  </Step>
+
+  <Step title="Upload">
+    Click **Import** and upload your filled spreadsheet. SQLBot processes each row and reports how many terms were created, duplicated, or failed.
+
+    <Note>
+      If any rows fail validation, SQLBot generates a downloadable error report as an `.xlsx` file showing which rows failed and why.
+    </Note>
+  </Step>
+</Steps>
+
+## Enabling and disabling terms
+
+Each term has an enabled/disabled toggle. Disabled terms are excluded from retrieval during query generation but remain in the library so you can re-enable them later. This is useful for seasonal terms or definitions that are temporarily incorrect during a schema migration.
+
+## Exporting the terminology library
+
+Click **Export** to download all terms in your workspace as an `.xlsx` file. Use this for auditing, sharing terminology across workspaces by importing into another, or backing up your definitions before a major schema change.

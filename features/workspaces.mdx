@@ -1,0 +1,127 @@
+---
+title: "Organizing Teams and Data Access with SQLBot Workspaces"
+description: "Workspaces are isolated environments in SQLBot that each have their own datasources, members, and settings, letting you control who can query what data."
+---
+
+Workspaces let you divide SQLBot into isolated environments for different teams, projects, or business units. Each workspace has its own set of datasources, members, terminology entries, and SQL training examples. A user in one workspace cannot see or query data in another. This makes workspaces the primary tool for controlling data access across your organization.
+
+## Default workspace
+
+Every SQLBot installation starts with a single default workspace (ID 1). All users are assigned to the default workspace until an administrator moves them elsewhere. The default workspace cannot be deleted.
+
+<Info>
+  If your organization only has one team or data domain, you may never need to create additional workspaces. The default workspace is fully functional on its own.
+</Info>
+
+## Workspace roles
+
+Within a workspace, users have one of two roles:
+
+<CardGroup cols={2}>
+  <Card title="Workspace admin" icon="shield-check">
+    Can add and configure datasources, manage members, create assistants, and maintain the terminology library and SQL training examples. Full control over everything in the workspace.
+  </Card>
+  <Card title="Member" icon="user">
+    Can start chat sessions and query any datasource connected to their workspace. Cannot change datasource configuration, add members, or manage workspace settings.
+  </Card>
+</CardGroup>
+
+The **system admin** (the account with `isAdmin = true`) can manage all workspaces, create new ones, and move users between workspaces from the administration panel.
+
+## Creating a workspace
+
+Only system administrators can create workspaces.
+
+<Steps>
+  <Step title="Open the administration panel">
+    Navigate to **Settings → Workspaces** in the top navigation. This section is only visible to system administrators.
+  </Step>
+
+  <Step title="Click Create workspace">
+    Click **Create** and enter a name for the new workspace. The name should describe the team or data domain it represents (for example, "Finance Analytics" or "Product Insights").
+  </Step>
+
+  <Step title="Save">
+    Click **Save**. The workspace is created and appears in the list with no members and no datasources yet.
+  </Step>
+</Steps>
+
+## Adding users to a workspace
+
+After creating a workspace, you need to assign members to it. This can be done by a system administrator from the workspace settings panel, or by a workspace admin from within the workspace.
+
+<Steps>
+  <Step title="Open the workspace">
+    From the workspace list, click the workspace you want to manage.
+  </Step>
+
+  <Step title="Go to Members">
+    Click the **Members** tab to see current workspace members and a search field for adding new ones.
+  </Step>
+
+  <Step title="Search for a user">
+    Type a name or account identifier in the search field. Only users who are not already members of this workspace appear in the results.
+  </Step>
+
+  <Step title="Set their role and add them">
+    Select the user and choose whether they join as a **Member** or a **Workspace admin**, then click **Add**.
+
+    <Tip>
+      Grant workspace admin rights only to users who need to configure datasources or manage the workspace. Most users need only the Member role.
+    </Tip>
+  </Step>
+</Steps>
+
+## Changing a member's role
+
+System administrators can change a user's role within a workspace at any time:
+
+1. Open the workspace and go to **Members**.
+2. Find the user and click **Edit**.
+3. Switch between Member and Workspace admin, then save.
+
+<Warning>
+  Downgrading a workspace admin to a member immediately removes their ability to manage datasources and other workspace settings. Any ongoing configuration work should be completed first.
+</Warning>
+
+## Removing users from a workspace
+
+To remove a member from a workspace:
+
+1. Open the workspace and go to **Members**.
+2. Select the user and click **Remove**.
+3. Confirm the removal.
+
+Removed users lose access to all datasources in that workspace immediately. Their previous chat sessions remain in the system but can no longer be accessed.
+
+<Note>
+  When a user is removed from a workspace, SQLBot automatically resets their active workspace to the default workspace (ID 1). They will still be able to log in and use the default workspace.
+</Note>
+
+## How data access is controlled
+
+Data access in SQLBot follows workspace boundaries strictly:
+
+- A datasource belongs to exactly one workspace. It cannot be shared across workspaces.
+- A user can only query datasources in workspaces they are a member of.
+- Terminology entries and SQL training examples are workspace-scoped — they only assist queries in the workspace where they were created.
+
+This means you can give the Finance team their own workspace connected to the finance data warehouse, while the Product team has a separate workspace connected to the product analytics database. Neither team sees the other's data or configuration.
+
+## Deleting a workspace
+
+Only system administrators can delete workspaces. The default workspace (ID 1) cannot be deleted.
+
+Before deleting a workspace:
+
+<Warning>
+  Deleting a workspace removes all its datasources, member assignments, terminology entries, and SQL training examples. This action cannot be undone. Move any data or configuration you want to keep to another workspace first.
+</Warning>
+
+To delete:
+
+1. Go to **Settings → Workspaces**.
+2. Click the workspace and select **Delete**.
+3. Confirm the deletion.
+
+All members of the deleted workspace are automatically moved to the default workspace.

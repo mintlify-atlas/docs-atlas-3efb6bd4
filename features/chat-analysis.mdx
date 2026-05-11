@@ -1,0 +1,158 @@
+---
+title: "Querying and Analyzing Data with SQLBot Chat Sessions"
+description: "Ask natural language questions about your data, get SQL-powered results with charts, follow up within a session, and export results to Excel."
+---
+
+Chat is the primary way you interact with SQLBot. You type a question in plain language — "What were our top 10 products by revenue last quarter?" — and SQLBot translates it into SQL, runs it against your connected database, and presents the results as a table and chart. You can keep the conversation going with follow-up questions that build on earlier answers, all without writing a single line of SQL.
+
+## Starting a new chat session
+
+<Steps>
+  <Step title="Click New Chat">
+    From the left sidebar, click **New Chat** or the compose icon. A blank chat window opens.
+  </Step>
+
+  <Step title="Select a datasource">
+    Use the datasource picker at the top of the chat window to choose which database you want to query. Only datasources connected to your workspace appear here.
+
+    <Info>
+      If no datasources appear, ask your workspace admin to add one. You cannot start a chat without at least one available datasource.
+    </Info>
+  </Step>
+
+  <Step title="Ask your first question">
+    Type your question in the input box and press **Enter** or click **Send**. SQLBot begins processing immediately.
+  </Step>
+
+  <Step title="Review the results">
+    SQLBot returns:
+    - The **data table** with rows and columns from the query result.
+    - A **chart or visualization** automatically selected based on the result shape (bar chart, line chart, pie chart, and so on).
+
+    <Note>
+      SQLBot streams the response progressively. You will see the SQL being constructed and data loading in real time before the final chart renders.
+    </Note>
+  </Step>
+</Steps>
+
+## What SQLBot returns
+
+Each response in a chat session contains several parts:
+
+<AccordionGroup>
+  <Accordion title="Data table">
+    A structured table of query results with sortable columns. For large result sets, the table is paginated. You can click any column header to sort.
+  </Accordion>
+
+  <Accordion title="Chart visualization">
+    SQLBot selects an appropriate chart type based on the structure of your results. A time-series result typically produces a line chart; a categorical breakdown produces a bar or pie chart. You can switch chart types using the controls above the chart.
+  </Accordion>
+
+  <Accordion title="Generated SQL">
+    Expand the **SQL** panel below the chart to see the exact query that was executed against your database. This is useful for verifying accuracy or copying the query for use elsewhere.
+
+    ```sql
+    SELECT
+        product_name,
+        SUM(revenue) AS total_revenue
+    FROM orders
+    WHERE order_date >= DATEADD(quarter, -1, GETDATE())
+    GROUP BY product_name
+    ORDER BY total_revenue DESC
+    LIMIT 10
+    ```
+  </Accordion>
+
+  <Accordion title="Recommended follow-up questions">
+    After each answer, SQLBot suggests a few related questions you might want to ask next. Click any suggestion to send it immediately.
+  </Accordion>
+</AccordionGroup>
+
+## Asking follow-up questions
+
+You do not need to start a new chat for each question. Ask follow-up questions in the same session to refine or extend your analysis:
+
+- "Break that down by region."
+- "Show me the same metric for the previous quarter."
+- "Which of those products had the highest return rate?"
+
+SQLBot maintains context across the conversation, so follow-ups can reference your earlier questions implicitly.
+
+<Tip>
+  If a follow-up question produces unexpected results, be more explicit. Say "of the top 10 products we just listed" rather than "of those products."
+</Tip>
+
+## Regenerating an answer
+
+If you are not satisfied with a result, you can ask SQLBot to try again. Use the regenerate option on any response to produce a new SQL query for the same question. This is useful when the first attempt misunderstood an ambiguous term.
+
+## AI analysis and prediction
+
+On any result that has produced a chart, you can trigger two additional AI actions:
+
+- **Analysis**: SQLBot provides a written interpretation of the data — identifying trends, outliers, and patterns.
+- **Prediction**: SQLBot generates a forecast based on historical patterns in the result data.
+
+Both actions stream their output back to the chat window as a follow-up message.
+
+## Exporting results
+
+To export the data from any response:
+
+1. Hover over the response you want to export.
+2. Click the **Export** icon (Excel/CSV).
+3. An `.xlsx` file downloads with the result data formatted into a spreadsheet, using the chart's configured axis labels as column headers.
+
+<Note>
+  Only data you personally queried can be exported. You cannot export results from other users' chat sessions.
+</Note>
+
+## Tips for asking better questions
+
+<AccordionGroup>
+  <Accordion title="Be specific about time ranges">
+    Vague time references like "recently" or "last year" are interpreted by the LLM and may not match your intent. Prefer explicit ranges:
+
+    - Instead of: "What were sales recently?"
+    - Try: "What were total sales between January 1 and March 31, 2025?"
+  </Accordion>
+
+  <Accordion title="Name the exact metrics and dimensions you want">
+    SQLBot performs better when you reference actual column names or business terms defined in your terminology library:
+
+    - Instead of: "Show me performance by location."
+    - Try: "Show me GMV and order count by city for Q1 2025."
+  </Accordion>
+
+  <Accordion title="Specify aggregations explicitly">
+    When you want totals, averages, or counts, say so directly:
+
+    - Instead of: "How are users doing?"
+    - Try: "What is the average session duration per user in the last 30 days?"
+  </Accordion>
+
+  <Accordion title="Limit scope to avoid timeouts">
+    Very broad queries (all rows across years of data without filters) can hit database timeouts. Add filters to keep result sets manageable:
+
+    - Add: "WHERE region = 'APAC'"
+    - Add: "LIMIT to the top 20 results"
+  </Accordion>
+</AccordionGroup>
+
+## When SQLBot cannot answer
+
+If SQLBot cannot generate valid SQL for your question, it tells you directly rather than returning incorrect results. Common reasons include:
+
+- The question references tables or columns that are not enabled in the datasource.
+- The question is too ambiguous for the LLM to resolve without additional context.
+- The required calculation is not expressible in standard SQL for your database engine.
+
+When this happens, try rephrasing with more specific column or table names, or add relevant terms to the [Terminology library](/features/terminology) so SQLBot understands your domain vocabulary.
+
+<Warning>
+  SQLBot only executes read queries (SELECT). It cannot INSERT, UPDATE, DELETE, or modify your database in any way.
+</Warning>
+
+## Renaming and organizing chats
+
+Each chat session is saved automatically in the left sidebar. To rename a session, click the three-dot menu next to the chat name and select **Rename**. Giving sessions descriptive names makes it easier to return to previous analyses.

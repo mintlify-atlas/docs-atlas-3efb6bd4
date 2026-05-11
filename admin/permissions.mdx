@@ -1,0 +1,131 @@
+---
+title: "Understanding SQLBot roles and permission boundaries"
+description: "Learn how SQLBot's three-tier role hierarchy controls access to workspaces, datasources, users, and system settings across the platform."
+---
+
+SQLBot uses a three-tier permission model: a global admin account at the top, workspace admins who manage a single workspace, and regular members who use the platform day-to-day. Every API call and UI action is gated against this hierarchy, so understanding who can do what helps you design a secure, well-organised deployment.
+
+## Role hierarchy
+
+```
+Global Admin
+└── Workspace Admin (one per workspace)
+    └── Regular Member
+```
+
+Roles are not exclusive: the global admin implicitly has all workspace admin capabilities everywhere. A user can be a workspace admin in one workspace and a regular member in another.
+
+## Global admin
+
+There is one global admin account in SQLBot: the built-in **admin** account (username `admin`, database ID `1`). This account is created at installation time and cannot be deleted.
+
+<Info>
+The global admin bypasses all workspace-level permission checks. Any endpoint decorated with `role=['admin']` or `role=['ws_admin']` grants the admin account unconditional access.
+</Info>
+
+**What the global admin can do:**
+
+<CardGroup cols={2}>
+  <Card title="User management" icon="users">
+    Create, edit, activate, deactivate, and delete any user account. Reset passwords. Batch-import users from Excel.
+  </Card>
+  <Card title="LLM model management" icon="cpu">
+    Add, edit, test, and delete AI models. Set the system-wide default model used for SQL generation.
+  </Card>
+  <Card title="Workspace management" icon="building">
+    Create, rename, and delete workspaces. Assign users to any workspace with any role. The default workspace (ID 1) cannot be deleted.
+  </Card>
+  <Card title="Datasource management" icon="database">
+    Add and configure datasources in any workspace. View and modify connection settings across all workspaces.
+  </Card>
+  <Card title="System settings" icon="sliders">
+    Access all global parameter settings, view the audit log, manage API keys, and configure authentication providers.
+  </Card>
+  <Card title="Audit log" icon="scroll">
+    View operation logs for all users across all workspaces, including login events, query execution, and configuration changes.
+  </Card>
+</CardGroup>
+
+## Workspace admin
+
+A workspace admin is a regular user whose `weight` is set to the admin level within a specific workspace. Unlike the global admin, their elevated permissions apply only inside the workspace where they hold that role.
+
+**What a workspace admin can do:**
+
+- View all members of their workspace.
+- Add existing users to their workspace.
+- Remove users from their workspace.
+- Promote or demote other members within their workspace.
+- Manage datasources assigned to their workspace.
+
+**What a workspace admin cannot do:**
+
+- Access **System Settings** (users, global LLM models, global parameters).
+- Create new user accounts.
+- Manage workspaces other than their own.
+- Change another user's password.
+- View the global audit log.
+
+<Note>
+Workspace admins who attempt to access admin-only endpoints receive a `"only admin can perform this operation"` error.
+</Note>
+
+## Regular member
+
+Regular members are the default role for all newly created users. They have read and write access to resources within their currently active workspace, but no administrative capabilities.
+
+**What a regular member can do:**
+
+- Send messages in the chat interface and receive SQL-generated results.
+- View and query all datasources assigned to their current workspace.
+- Switch between workspaces they have been assigned to.
+- Change their own display language and password.
+- Generate and manage their own API keys.
+
+**What a regular member cannot do:**
+
+- View users, workspaces, or datasources outside their active workspace.
+- Access **System Settings** in any capacity.
+- Add or remove other users from workspaces.
+- Configure or delete AI models.
+
+## Workspace isolation
+
+Workspaces are the primary boundary for data access in SQLBot. When a user switches their active workspace, the datasources, conversations, and assistants visible to them change completely. A user with memberships in multiple workspaces cannot mix resources across them.
+
+Workspace isolation is enforced at the API level: every request that accesses a datasource or conversation is validated against the requesting user's current workspace ID (`oid`). If the resource does not belong to that workspace, SQLBot returns a `"permission resource limit"` error — not a 404.
+
+## How to promote a user to workspace admin
+
+<Steps>
+  <Step title="Navigate to the workspace">
+    Go to **System Settings → Workspaces** and select the workspace where you want to promote the user.
+  </Step>
+  <Step title="Open the Members tab">
+    Click the **Members** tab to see everyone currently assigned to the workspace.
+  </Step>
+  <Step title="Change the user's role">
+    Find the user in the list and change their role from **Member** to **Workspace Admin**. The change takes effect immediately — their session cache is cleared and the next request they make will use the new role.
+  </Step>
+</Steps>
+
+## Permission reference
+
+The table below summarises which actions each role can perform.
+
+| Action | Global admin | Workspace admin | Regular member |
+|---|---|---|---|
+| Create/delete user accounts | Yes | No | No |
+| Activate/deactivate users | Yes | No | No |
+| Reset user passwords | Yes | No | No |
+| Add LLM models | Yes | No | No |
+| Set default LLM model | Yes | No | No |
+| Create/delete workspaces | Yes | No | No |
+| Add members to workspace | Yes | Yes (own workspace) | No |
+| Remove members from workspace | Yes | Yes (own workspace) | No |
+| Promote members to workspace admin | Yes | No | No |
+| Manage datasources (any workspace) | Yes | Yes (own workspace) | No |
+| View global audit log | Yes | No | No |
+| Use chat / run SQL queries | Yes | Yes | Yes |
+| Change own password and language | Yes | Yes | Yes |
+| Manage own API keys | Yes | Yes | Yes |

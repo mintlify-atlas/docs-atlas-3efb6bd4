@@ -1,0 +1,135 @@
+---
+title: "SQLBot Environment Variable Configuration Guide"
+description: "Complete reference for all environment variables that control SQLBot's database, security, CORS, logging, and MCP server behavior in any deployment."
+---
+
+SQLBot is configured entirely through environment variables, whether you are using `docker run`, Docker Compose, or the offline installer. Variables are read at startup by the backend settings module (`backend/common/core/config.py`) using Pydantic Settings, which means they can also be provided via a `.env` file mounted into the container.
+
+This page documents every variable that operators are expected to configure. Internal runtime defaults are omitted.
+
+<Warning>
+  Before exposing SQLBot to any network, you **must** change `SECRET_KEY`, `POSTGRES_PASSWORD`, and `DEFAULT_PWD`. The shipped default values are publicly known and are not safe for production use.
+</Warning>
+
+---
+
+## Database
+
+These variables define how SQLBot connects to PostgreSQL. When using the single-container Docker deployment, `POSTGRES_SERVER` should remain `localhost` because PostgreSQL runs inside the same container.
+
+| Variable            | Default           | Required | Description                                                                                     |
+| ------------------- | ----------------- | -------- | ----------------------------------------------------------------------------------------------- |
+| `POSTGRES_SERVER`   | `localhost`       | Yes      | Hostname or IP address of the PostgreSQL server.                                                |
+| `POSTGRES_PORT`     | `5432`            | Yes      | TCP port PostgreSQL listens on.                                                                 |
+| `POSTGRES_DB`       | `sqlbot`          | Yes      | Name of the database. The database must exist or the embedded instance must be able to create it. |
+| `POSTGRES_USER`     | `root`            | Yes      | PostgreSQL username SQLBot will authenticate as.                                                |
+| `POSTGRES_PASSWORD` | `Password123@pg`  | Yes      | PostgreSQL password. **Change this value before deploying.**                                    |
+
+<Tip>
+  If your password contains special characters (such as `@`, `&`, or `%`), wrap the value in double quotes in `install.conf` or ensure it is properly quoted in your shell environment.
+</Tip>
+
+To connect to an external PostgreSQL instance instead of the embedded one, set `POSTGRES_SERVER` to the remote host address and adjust the credentials accordingly. When using the offline installer, also set `SQLBOT_EXTERNAL_DB=true` in `install.conf`.
+
+---
+
+## Application
+
+| Variable       | Default         | Description                                                                                             |
+| -------------- | --------------- | ------------------------------------------------------------------------------------------------------- |
+| `PROJECT_NAME` | `SQLBot`        | The display name shown in the web UI header and used in API responses.                                  |
+| `DEFAULT_PWD`  | `SQLBot@123456` | Initial password assigned to newly created non-admin user accounts. **Change before deploying.**        |
+
+---
+
+## Security
+
+| Variable     | Default                                           | Description                                                                                                                                                                                              |
+| ------------ | ------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `SECRET_KEY` | `y5txe1mRmS_JpOrUzFzHEu-kIQn3lf7ll0AOv9DQh0s`  | The key used to sign and verify JWT authentication tokens. Changing this value immediately invalidates all active user sessions. Generate a new value with: `python3 -c "import secrets; print(secrets.token_urlsafe(32))"` |
+
+<Warning>
+  Never use the default `SECRET_KEY` in production. Anyone with this key can forge authentication tokens for any user account, including admin.
+</Warning>
+
+---
+
+## CORS
+
+Cross-Origin Resource Sharing (CORS) controls which browser origins are permitted to call the SQLBot API. The backend parses this as a comma-separated list of origin strings.
+
+| Variable                | Default                                                                              | Description                                                                                                                                                                                |
+| ----------------------- | ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `BACKEND_CORS_ORIGINS`  | `http://localhost,http://localhost:5173,https://localhost,https://localhost:5173`    | Comma-separated list of allowed origins. Add your production domain (e.g., `https://sqlbot.example.com`) or any other origin from which users will access the SQLBot UI or embed the widget. |
+
+Example for a production deployment behind a reverse proxy:
+
+```bash
+BACKEND_CORS_ORIGINS="https://sqlbot.example.com,https://app.example.com"
+```
+
+<Note>
+  The embedded frontend host (`FRONTEND_HOST`, default `http://localhost:5173`) is always added to the allowed origins automatically and does not need to be listed in `BACKEND_CORS_ORIGINS`.
+</Note>
+
+---
+
+## MCP server
+
+The MCP (Model Context Protocol) server runs on port 8001 and allows external agents such as n8n, Dify, and MaxKB to call SQLBot as a tool. It generates chart images that are served over HTTP.
+
+| Variable            | Default                                  | Description                                                                                                                                                                                  |
+| ------------------- | ---------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `SERVER_IMAGE_HOST` | `http://YOUR_SERVE_IP:MCP_PORT/images/` | Base URL that the MCP server uses when constructing public links to generated chart images. Replace `YOUR_SERVE_IP` with your server's IP or hostname and `MCP_PORT` with `8001` (default). |
+
+Example:
+
+```bash
+SERVER_IMAGE_HOST=http://192.168.1.100:8001/images/
+```
+
+---
+
+## Logging
+
+| Variable    | Default | Accepted values                   | Description                                                                                                                                                          |
+| ----------- | ------- | --------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `LOG_LEVEL` | `INFO`  | `DEBUG`, `INFO`, `WARNING`, `ERROR` | Controls the verbosity of application log output. Use `DEBUG` for detailed troubleshooting. Use `WARNING` or `ERROR` in stable production environments to reduce noise. |
+| `SQL_DEBUG` | `False` | `True`, `False`                   | When `True`, every SQL statement executed by the ORM is printed to the application log. Useful for diagnosing slow queries or unexpected data behavior.               |
+
+<Note>
+  `SQL_DEBUG=True` produces very high log volume and should only be enabled during active troubleshooting, not in day-to-day production operation.
+</Note>
+
+---
+
+## Full example
+
+The following block shows a production-ready set of environment variables using the Docker Compose format. Replace the placeholder values with your actual configuration.
+
+```yaml
+environment:
+  # Database
+  POSTGRES_SERVER: localhost
+  POSTGRES_PORT: 5432
+  POSTGRES_DB: sqlbot
+  POSTGRES_USER: root
+  POSTGRES_PASSWORD: "YourStrongPasswordHere"
+
+  # Application
+  PROJECT_NAME: "SQLBot"
+  DEFAULT_PWD: "YourDefaultUserPassword"
+
+  # Security
+  SECRET_KEY: "replace-with-output-of-secrets.token_urlsafe-32"
+
+  # CORS
+  BACKEND_CORS_ORIGINS: "https://sqlbot.example.com"
+
+  # MCP
+  SERVER_IMAGE_HOST: "http://your-server-ip:8001/images/"
+
+  # Logging
+  LOG_LEVEL: "INFO"
+  SQL_DEBUG: False
+```

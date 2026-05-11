@@ -1,0 +1,159 @@
+---
+title: "Deploy SQLBot with Docker Compose"
+description: "Use Docker Compose for a declarative SQLBot deployment with full control over environment variables, networking, and volume configuration."
+---
+
+Docker Compose gives you a version-controlled, reproducible deployment definition. It is recommended when you want to customize environment variables, integrate with an existing Docker network, or manage SQLBot alongside other services. The Compose file is the source of truth for all runtime configuration.
+
+## Prerequisites
+
+- Docker Engine 20.10 or later with the Compose plugin (`docker compose`) **or** standalone `docker-compose` v2.
+- A Linux server with at least 2 CPU cores and 4 GB of RAM.
+
+## Deployment
+
+<Steps>
+  <Step title="Download the Compose file">
+    Save the following file as `docker-compose.yaml` in a directory of your choice (for example, `/opt/sqlbot`).
+
+    ```yaml
+    services:
+      sqlbot:
+        image: dataease/sqlbot
+        container_name: sqlbot
+        restart: always
+        privileged: true
+        networks:
+          - sqlbot-network
+        ports:
+          - 8000:8000
+          - 8001:8001
+        environment:
+          # Database configuration
+          POSTGRES_SERVER: localhost
+          POSTGRES_PORT: 5432
+          POSTGRES_DB: sqlbot
+          POSTGRES_USER: root
+          POSTGRES_PASSWORD: Password123@pg
+          # Project basic settings
+          PROJECT_NAME: "SQLBot"
+          DEFAULT_PWD: "SQLBot@123456"
+          # MCP settings
+          SERVER_IMAGE_HOST: http://YOUR_SERVE_IP:MCP_PORT/images/
+          # Auth & Security
+          SECRET_KEY: y5txe1mRmS_JpOrUzFzHEu-kIQn3lf7ll0AOv9DQh0s
+          # CORS settings
+          BACKEND_CORS_ORIGINS: "http://localhost,http://localhost:5173,https://localhost,https://localhost:5173"
+          # Logging
+          LOG_LEVEL: "INFO"
+          SQL_DEBUG: False
+        volumes:
+          - ./data/sqlbot/excel:/opt/sqlbot/data/excel
+          - ./data/sqlbot/file:/opt/sqlbot/data/file
+          - ./data/sqlbot/images:/opt/sqlbot/images
+          - ./data/sqlbot/logs:/opt/sqlbot/app/logs
+          - ./data/postgresql:/var/lib/postgresql/data
+
+    networks:
+      sqlbot-network:
+    ```
+  </Step>
+
+  <Step title="Customize required environment variables">
+    Before starting the stack, update the variables listed below. The defaults are intentionally insecure and must not be used in production.
+
+    <Warning>
+      You **must** change `SECRET_KEY`, `POSTGRES_PASSWORD`, and `DEFAULT_PWD` before running in any environment that is accessible over a network. The shipped defaults are publicly known.
+    </Warning>
+
+    | Variable               | What to change it to                                                     |
+    | ---------------------- | ------------------------------------------------------------------------ |
+    | `SECRET_KEY`           | Generate a new value: `python3 -c "import secrets; print(secrets.token_urlsafe(32))"` |
+    | `POSTGRES_PASSWORD`    | A strong password for the embedded PostgreSQL instance.                  |
+    | `DEFAULT_PWD`          | The initial password assigned to new non-admin users.                    |
+    | `BACKEND_CORS_ORIGINS` | The actual origins from which your browser will access SQLBot.           |
+    | `SERVER_IMAGE_HOST`    | The public URL of your server, used to serve MCP-generated chart images. |
+  </Step>
+
+  <Step title="Start the stack">
+    ```bash
+    docker compose up -d
+    ```
+
+    To follow the startup logs:
+
+    ```bash
+    docker compose logs -f
+    ```
+
+    The stack is ready when you see uvicorn report that the application started on port 8000.
+  </Step>
+
+  <Step title="Open the web UI">
+    Navigate to `http://<your-server-ip>:8000` and log in with:
+
+    - **Username:** `admin`
+    - **Password:** `SQLBot@123456`
+
+    Change the admin password immediately from the profile settings page.
+  </Step>
+</Steps>
+
+## Environment variable reference
+
+### Database
+
+These variables configure the connection to the embedded PostgreSQL instance. If you set `POSTGRES_SERVER` to a remote host, the container will connect to an external database instead of the bundled one.
+
+| Variable            | Default             | Description                                      |
+| ------------------- | ------------------- | ------------------------------------------------ |
+| `POSTGRES_SERVER`   | `localhost`         | Hostname or IP of the PostgreSQL server.         |
+| `POSTGRES_PORT`     | `5432`              | TCP port PostgreSQL listens on.                  |
+| `POSTGRES_DB`       | `sqlbot`            | Name of the database SQLBot will use.            |
+| `POSTGRES_USER`     | `root`              | PostgreSQL username.                             |
+| `POSTGRES_PASSWORD` | `Password123@pg`    | PostgreSQL password. **Change before deploying.**|
+
+### Application
+
+| Variable        | Default          | Description                                                               |
+| --------------- | ---------------- | ------------------------------------------------------------------------- |
+| `PROJECT_NAME`  | `SQLBot`         | Display name shown in the web UI header.                                  |
+| `DEFAULT_PWD`   | `SQLBot@123456`  | Default password assigned to newly created non-admin users. **Change before deploying.** |
+
+### Security
+
+| Variable     | Default                                           | Description                                                                                                          |
+| ------------ | ------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `SECRET_KEY` | `y5txe1mRmS_JpOrUzFzHEu-kIQn3lf7ll0AOv9DQh0s`  | Key used to sign JWT authentication tokens. Changing this value invalidates all active sessions. **Change before deploying.** |
+
+### CORS
+
+| Variable                | Default                                                                              | Description                                                                                                                                     |
+| ----------------------- | ------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `BACKEND_CORS_ORIGINS`  | `http://localhost,http://localhost:5173,https://localhost,https://localhost:5173`    | Comma-separated list of origins the browser is allowed to send requests from. Include your production domain (e.g., `https://sqlbot.example.com`). |
+
+### MCP server
+
+| Variable             | Default                                  | Description                                                                                                      |
+| -------------------- | ---------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `SERVER_IMAGE_HOST`  | `http://YOUR_SERVE_IP:MCP_PORT/images/` | Base URL used to construct public links to chart images generated by the MCP server. Replace with your actual server address and port 8001. |
+
+### Logging
+
+| Variable    | Default | Description                                                                                              |
+| ----------- | ------- | -------------------------------------------------------------------------------------------------------- |
+| `LOG_LEVEL` | `INFO`  | Application log verbosity. Accepted values: `DEBUG`, `INFO`, `WARNING`, `ERROR`.                        |
+| `SQL_DEBUG` | `False` | When set to `True`, all SQL statements executed by the ORM are written to the application log. Useful for troubleshooting data issues. |
+
+## Managing the stack
+
+```bash
+# Stop all services
+docker compose down
+
+# Restart with updated environment variables
+docker compose down && docker compose up -d
+
+# Pull the latest image and redeploy
+docker compose pull && docker compose up -d
+```

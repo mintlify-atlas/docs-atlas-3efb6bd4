@@ -1,0 +1,172 @@
+---
+title: "Deploy SQLBot in an Air-Gapped Environment"
+description: "Install SQLBot on servers without internet access using the offline installer package. Covers the offline bundle approach and the 1Panel app store alternative."
+---
+
+In environments where outbound internet access is restricted or unavailable — such as private data centers, government networks, or air-gapped production systems — SQLBot provides a self-contained offline installer. The package includes the Docker images, binaries, and scripts required to complete a full installation without pulling anything from the internet.
+
+## Offline installer approach
+
+<Steps>
+  <Step title="Download the offline package">
+    On a machine that has internet access, visit the SQLBot releases page and download the latest offline installer archive:
+
+    ```
+    https://community.fit2cloud.com/#/products/sqlbot/downloads
+    ```
+
+    The archive file is named with the release version, for example `sqlbot-offline-v1.x.x.tar.gz`. It contains:
+    - Pre-loaded Docker images (`images/` directory)
+    - The `install.sh` installer script
+    - The `install.conf` configuration file
+    - The `sctl` management CLI
+    - Docker and Docker Compose binaries (for servers without Docker pre-installed)
+  </Step>
+
+  <Step title="Transfer the package to the target server">
+    Copy the archive to the air-gapped server using `scp`, a USB drive, or whatever transfer method your security policy permits.
+
+    ```bash
+    scp sqlbot-offline-v1.x.x.tar.gz user@your-server:/opt/
+    ```
+  </Step>
+
+  <Step title="Extract the archive">
+    Log in to the target server and extract the package.
+
+    ```bash
+    tar -xzf sqlbot-offline-v1.x.x.tar.gz -C /opt/
+    cd /opt/sqlbot-offline-v1.x.x
+    ```
+  </Step>
+
+  <Step title="Review and edit install.conf">
+    Open `install.conf` and adjust any settings before running the installer. At minimum, review the port assignments and database password.
+
+    ```bash
+    # install.conf — key settings to review
+
+    # Installation base directory
+    SQLBOT_BASE=/opt
+
+    # Ports
+    SQLBOT_WEB_PORT=8000
+    SQLBOT_MCP_PORT=8001
+
+    # Whether to use an external database (set to true if you have your own PostgreSQL)
+    SQLBOT_EXTERNAL_DB=false
+
+    # Embedded database credentials — change before installing
+    SQLBOT_DB_PASSWORD=Password123@pg
+
+    # Default password for new users
+    SQLBOT_DEFAULT_PWD=SQLBot@123456
+
+    # JWT signing key — change before installing
+    SQLBOT_SECRET_KEY=y5txe1mRmS_JpOrUzFzHEu-kIQn3lf7ll0AOv9DQh0s
+
+    # CORS origins
+    SQLBOT_CORS_ORIGINS=http://localhost,http://localhost:5173
+
+    # Log level: DEBUG, INFO, WARNING, ERROR
+    SQLBOT_LOG_LEVEL="INFO"
+
+    # MCP image host URL (replace with your actual server IP and port)
+    SQLBOT_SERVER_IMAGE_HOST=http://YOUR_SERVER_IP:MCP_PORT/images/
+    ```
+
+    <Warning>
+      Change `SQLBOT_DB_PASSWORD`, `SQLBOT_DEFAULT_PWD`, and `SQLBOT_SECRET_KEY` before running the installer. The defaults are publicly known and must not be used in production.
+    </Warning>
+  </Step>
+
+  <Step title="Run the installer">
+    Execute the install script as root (or with `sudo`). The script will:
+    1. Check and initialize environment variables from `install.conf`.
+    2. Set up the installation directory structure under `SQLBOT_BASE`.
+    3. Install the `sctl` management CLI to `/usr/local/bin`.
+    4. Install Docker and Docker Compose from the bundled binaries if not already present.
+    5. Load the SQLBot Docker image from the `images/` directory.
+    6. Start the SQLBot service.
+
+    ```bash
+    sudo bash install.sh
+    ```
+
+    The installer prints a numbered log of each step. On a successful install you will see output similar to:
+
+    ```
+    ======================= 安装完成 =======================
+
+    系统登录信息如下:
+        访问地址: http://服务器IP:8000
+        用户名: admin
+        初始密码: SQLBot@123456
+    ```
+  </Step>
+
+  <Step title="Verify and log in">
+    Open your browser and navigate to:
+
+    ```
+    http://<your-server-ip>:8000
+    ```
+
+    Log in with username `admin` and the initial password `SQLBot@123456` (or the value you set for `SQLBOT_DEFAULT_PWD`).
+
+    <Warning>
+      Change the admin password immediately after your first login.
+    </Warning>
+  </Step>
+</Steps>
+
+## Managing an offline installation with sctl
+
+The installer places the `sctl` management CLI at `/usr/local/bin/sctl`. Use it to control the SQLBot service after installation.
+
+```bash
+# Start SQLBot
+sctl start
+
+# Stop SQLBot
+sctl stop
+
+# Restart SQLBot
+sctl restart
+
+# View service status
+sctl status
+```
+
+## Upgrading an offline installation
+
+To upgrade, download the newer offline package, transfer it to the server, extract it, and run `install.sh` again from the new package directory. The script detects an existing installation and performs an in-place upgrade rather than a fresh install.
+
+```bash
+tar -xzf sqlbot-offline-v1.y.y.tar.gz -C /opt/
+cd /opt/sqlbot-offline-v1.y.y
+sudo bash install.sh
+```
+
+## 1Panel app store (alternative)
+
+If your servers are managed by [1Panel](https://apps.fit2cloud.com/1panel), you can deploy SQLBot directly from the 1Panel app store. This approach handles image delivery and service management through the 1Panel interface, which is convenient for teams already using 1Panel as their server management panel.
+
+<Tabs>
+  <Tab title="When to use 1Panel">
+    Use the 1Panel app store when:
+    - Your team already manages servers through 1Panel.
+    - You want a GUI-based deployment and upgrade workflow.
+    - You prefer 1Panel's built-in backup and monitoring integration.
+  </Tab>
+  <Tab title="When to use the offline installer">
+    Use the offline installer when:
+    - Servers have no internet access and 1Panel is not installed.
+    - You need full control over the installation path and configuration.
+    - You are automating deployment with configuration management tools.
+  </Tab>
+</Tabs>
+
+<Info>
+  The 1Panel app store may not always carry the very latest SQLBot release on the same day as the GitHub release. Check the release notes for the current app store version before deploying to production.
+</Info>

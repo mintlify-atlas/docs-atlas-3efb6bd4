@@ -1,0 +1,144 @@
+---
+title: "System settings overview for SQLBot administrators"
+description: "Explore global configuration options for SQLBot admins: LLM models, workspaces, users, parameters, audit logs, and production hardening steps."
+---
+
+The **System Settings** area is the central control plane for a SQLBot deployment. It is only accessible to the global admin account. From here you configure the AI models that power SQL generation, manage workspaces and users, tune global parameters, and review the audit log. This page gives you an overview of what is available and where to find it.
+
+<Info>
+All sections described on this page require the global admin account (`admin`). Workspace admins and regular members cannot access **System Settings**.
+</Info>
+
+## Sections at a glance
+
+<CardGroup cols={2}>
+  <Card title="AI Models" icon="cpu" href="/admin/llm-models">
+    Add and manage the LLM providers that SQLBot uses for natural-language-to-SQL conversion. At least one model must be configured and set as the default before any queries can run.
+  </Card>
+  <Card title="Users" icon="users" href="/admin/users">
+    Create accounts, reset passwords, activate or deactivate users, and assign them to workspaces. Batch import from Excel is also available here.
+  </Card>
+  <Card title="Workspaces" icon="building" href="/features/workspaces">
+    Create and rename workspaces that isolate datasources and conversations from one another. Manage workspace membership and roles.
+  </Card>
+  <Card title="Permissions" icon="shield" href="/admin/permissions">
+    Understand the three-tier role model: global admin, workspace admin, and regular member, and how workspace isolation is enforced.
+  </Card>
+</CardGroup>
+
+## Global parameters
+
+Navigate to **System Settings → Parameters** to view and edit global configuration values. Parameters are grouped into categories. Changes take effect immediately without restarting the server.
+
+<AccordionGroup>
+  <Accordion title="Login settings">
+    Controls authentication behaviour, such as session duration and login restrictions. These settings are also exposed publicly so the login page can adapt its UI without an authenticated session.
+  </Accordion>
+  <Accordion title="Chat settings">
+    Controls how the query engine behaves during conversation. For example, the number of prior conversation rounds included in each prompt (`GENERATE_SQL_QUERY_HISTORY_ROUND_COUNT`, default `3`) and whether a row-count limit is enforced on query results (`GENERATE_SQL_QUERY_LIMIT_ENABLED`, default `true`).
+  </Accordion>
+</AccordionGroup>
+
+<Tip>
+Parameters are saved immediately when you click **Save**. You do not need to restart the backend for changes to take effect.
+</Tip>
+
+## Audit log
+
+SQLBot records every significant operation in a structured audit log stored in the `sys_logs` table. Navigate to **System Settings → Audit Log** to view and filter log entries.
+
+Each log entry captures:
+
+| Field | Description |
+|---|---|
+| **Operation type** | The action performed: `create`, `delete`, `update`, `reset_pwd`, `login`, `export`, and others. |
+| **Module** | The resource category: `user`, `workspace`, `ai_model`, `datasource`, `chat`, `member`, and more. |
+| **User** | The account that performed the action. |
+| **Workspace** | The workspace context in which the action occurred. |
+| **Status** | Whether the operation succeeded or failed. |
+| **IP address** | The client IP address at the time of the request. |
+| **Execution time** | How long the operation took in milliseconds. |
+| **Timestamp** | When the operation occurred. |
+
+<Note>
+The audit log covers all administrative actions (user creation, password resets, model changes) as well as user activity (chat queries, datasource access, login events). Only the global admin can view the full log.
+</Note>
+
+## Interface language
+
+Each user sets their own language preference from their profile page. The platform supports four locales:
+
+| Code | Language |
+|---|---|
+| `zh-CN` | Simplified Chinese (default for new accounts) |
+| `zh-TW` | Traditional Chinese |
+| `en` | English |
+| `ko-KR` | Korean |
+
+Language validation is enforced both client-side and server-side. Requests with unsupported locale codes are rejected.
+
+## API keys
+
+Users can generate API keys to access SQLBot programmatically. Navigate to **System Settings → API Keys** to view all active keys across the platform. As an admin, you can disable any key.
+
+Each key pair consists of an **Access Key** (public identifier) and a **Secret Key** (credential). Keys can be activated or deactivated at any time without deleting them.
+
+## Production deployment checklist
+
+Before going live, review the following hardening steps.
+
+<Steps>
+  <Step title="Change the default admin password">
+    The admin account is created with the default password defined by `DEFAULT_PWD` (default: `SQLBot@123456`). Change it immediately after first login.
+
+    Passwords must be 8–20 characters and include at least one uppercase letter, one lowercase letter, one digit, and one special character (`~!@#$%^&*()_+-={}|:"<>?` etc).
+  </Step>
+  <Step title="Set a strong SECRET_KEY">
+    The `SECRET_KEY` environment variable signs all JWT access tokens. The default value is randomly generated at startup, which means tokens are invalidated on every restart. Set a stable, high-entropy value in your `.env` file:
+
+    ```bash
+    # Generate a secure key
+    python -c "import secrets; print(secrets.token_urlsafe(32))"
+    ```
+
+    Then add it to your environment:
+
+    ```ini
+    SECRET_KEY=your-generated-key-here
+    ```
+  </Step>
+  <Step title="Configure CORS origins">
+    Set `BACKEND_CORS_ORIGINS` to the exact origin(s) your frontend is served from. The `FRONTEND_HOST` variable also adds a permitted origin:
+
+    ```ini
+    FRONTEND_HOST=https://sqlbot.example.com
+    BACKEND_CORS_ORIGINS=["https://sqlbot.example.com"]
+    ```
+  </Step>
+  <Step title="Configure the database connection">
+    By default SQLBot connects to a local PostgreSQL instance. Set `SQLBOT_DB_URL` for a custom connection string, or set the individual `POSTGRES_*` variables:
+
+    ```ini
+    POSTGRES_SERVER=db.example.com
+    POSTGRES_PORT=5432
+    POSTGRES_USER=sqlbot
+    POSTGRES_PASSWORD=strong-password-here
+    POSTGRES_DB=sqlbot
+    ```
+  </Step>
+  <Step title="Set up Redis for caching (recommended)">
+    By default SQLBot uses in-memory caching (`CACHE_TYPE=memory`), which does not persist across restarts and does not scale across multiple instances. For production, configure Redis:
+
+    ```ini
+    CACHE_TYPE=redis
+    CACHE_REDIS_URL=redis://:password@redis.example.com:6379/0
+    ```
+  </Step>
+  <Step title="Add at least one LLM model">
+    Users cannot run any queries until a default AI model is configured. Go to **System Settings → AI Models → Add** and connect your preferred provider before sharing access with users. See the [LLM Models](/admin/llm-models) page for full setup instructions.
+  </Step>
+</Steps>
+
+<Warning>
+Running SQLBot with the default `SECRET_KEY`, `DEFAULT_PWD`, and database password in a production environment is a serious security risk. Complete the checklist above before exposing the platform to users.
+</Warning>

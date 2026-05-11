@@ -1,0 +1,144 @@
+---
+title: "Configuring AI language models for SQL generation in SQLBot"
+description: "Add and manage LLM providers that power SQLBot's SQL generation. At least one model must be configured and set as default before queries can run."
+---
+
+SQLBot converts natural language questions into SQL queries by sending your schema context and the user's question to a large language model (LLM). Without a configured model, the chat interface will refuse all query requests. This page explains how to add models, set a default, verify connectivity, and manage your model list as an administrator.
+
+## Why you need an LLM
+
+Every query in SQLBot goes through three stages: the user types a question, SQLBot enriches it with your table schema and training examples using RAG (Retrieval-Augmented Generation), and then sends the enriched prompt to the configured LLM. The model returns SQL, which SQLBot executes against your datasource and renders as a table or chart. No model means no SQL generation.
+
+## Supported providers
+
+SQLBot supports OpenAI's native API and any provider that exposes an OpenAI-compatible endpoint.
+
+| Provider | Protocol | Example models |
+|---|---|---|
+| OpenAI | OpenAI native | `gpt-4o`, `gpt-4-turbo`, `gpt-3.5-turbo` |
+| DeepSeek | OpenAI compatible | `deepseek-chat`, `deepseek-coder` |
+| Alibaba Cloud Bailian | OpenAI compatible | `qwen-turbo`, `qwen-plus`, `qwen-max` |
+| Qianfan (Baidu) | OpenAI compatible | `ernie-4.0` |
+| Tencent Hunyuan | OpenAI compatible | `hunyuan-pro` |
+| iFlytek Spark | OpenAI compatible | |
+| Google Gemini | OpenAI compatible | `gemini-1.5-pro`, `gemini-1.5-flash` |
+| Kimi (Moonshot) | OpenAI compatible | `moonshot-v1-8k`, `moonshot-v1-32k` |
+| Tencent Cloud | OpenAI compatible | |
+| Volcano Engine (Doubao) | OpenAI compatible | |
+| MiniMax | OpenAI compatible | |
+| Any self-hosted endpoint | OpenAI compatible | Any model behind a vLLM or similar proxy |
+
+## Adding a model
+
+Navigate to **System Settings → AI Models** and click **Add model**.
+
+<Steps>
+  <Step title="Enter a display name">
+    The **Model name** field is what appears in the UI when selecting models. Use something descriptive like `"GPT-4o (Production)"` or `"DeepSeek Chat"`.
+  </Step>
+  <Step title="Select the supplier and model type">
+    Choose your provider from the **Supplier** dropdown. This sets the model type, which controls how SQLBot initialises the LangChain client internally.
+  </Step>
+  <Step title="Choose the protocol">
+    Select the API protocol:
+
+    <CardGroup cols={2}>
+      <Card title="OpenAI native (1)" icon="circle-check">
+        Use for the official OpenAI API. SQLBot sends requests directly to `https://api.openai.com` using `langchain-openai`.
+      </Card>
+      <Card title="OpenAI compatible (2)" icon="plug">
+        Use for any provider that accepts OpenAI-format requests. You must supply the provider's base URL in the **API domain** field.
+      </Card>
+    </CardGroup>
+  </Step>
+  <Step title="Enter the base model name">
+    The **Base model** field must match the exact model identifier the provider expects — for example `gpt-4o`, `deepseek-chat`, or `gemini-1.5-pro`. This value is passed directly to the model's API.
+  </Step>
+  <Step title="Add your API key">
+    Paste your API key into the **API key** field. SQLBot encrypts this value at rest. For self-hosted endpoints that do not require a key, you can enter any placeholder string.
+  </Step>
+  <Step title="Set the API domain (OpenAI-compatible only)">
+    For non-OpenAI providers, enter the full base URL in the **API domain** field. This is the root endpoint the provider uses for chat completions — for example:
+
+    ```text
+    https://api.deepseek.com
+    ```
+
+    ```text
+    https://dashscope.aliyuncs.com/compatible-mode/v1
+    ```
+
+    Leave this field blank when using the OpenAI native protocol, as the SDK uses OpenAI's endpoint automatically.
+  </Step>
+  <Step title="Add extra configuration parameters (optional)">
+    The **Config** section accepts additional key-value pairs that are passed directly to the LangChain model constructor. Use this for provider-specific settings:
+
+    ```json
+    [
+      { "key": "temperature", "val": 0.0, "name": "Temperature" },
+      { "key": "max_tokens",  "val": 4096, "name": "Max tokens" }
+    ]
+    ```
+
+    For Azure OpenAI, use this section to supply `api_version` and `deployment_name`.
+  </Step>
+  <Step title="Test the connection">
+    Click **Test connection** before saving. SQLBot sends the prompt `"1+1=?"` to the model and streams the response back. A successful test confirms your API key, base URL, and model name are all correct.
+  </Step>
+  <Step title="Save the model">
+    Click **Confirm**. If this is the first model you have added, it is automatically set as the default.
+  </Step>
+</Steps>
+
+## Setting the default model
+
+SQLBot uses a single default model for all SQL generation unless a workspace or assistant overrides it. Only one model can be the default at any time.
+
+To change the default:
+
+1. Open **System Settings → AI Models**.
+2. Find the model you want to promote.
+3. Click the **Set as default** button (star icon).
+
+SQLBot immediately unsets the previous default and marks the new model. The change applies to all subsequent queries — in-flight requests complete using the model that was default when they started.
+
+<Warning>
+You cannot delete the current default model. To remove it, first set a different model as the default, then delete the original.
+</Warning>
+
+## Testing a model connection
+
+You can test any model at any time — not only during creation. Open the model's detail panel and click **Test connection**. The test streams a short response in real time. Any errors (invalid key, unreachable endpoint, wrong model name) appear inline in the test output.
+
+<Tip>
+Run a connection test after rotating API keys or changing a provider's base URL to confirm the update took effect.
+</Tip>
+
+## Editing a model
+
+Click a model's row to open its detail panel. All fields except the model's internal ID can be updated. After editing, run a connection test to confirm the changes work before saving.
+
+## Deleting a model
+
+Select a model and click **Delete**.
+
+<Warning>
+The default model cannot be deleted. If you try, SQLBot returns an error. Promote another model to default first.
+</Warning>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="The test returns an authentication error">
+    Verify that the API key is correct and has not expired. For OpenAI-compatible providers, confirm the key is valid for the specific base URL you entered.
+  </Accordion>
+  <Accordion title="The test hangs or times out">
+    Check that the **API domain** URL is reachable from your SQLBot server. For self-hosted models, ensure the inference service is running and the port is accessible.
+  </Accordion>
+  <Accordion title="The test succeeds but queries still fail">
+    Confirm the model is set as the default, or that the workspace/assistant is configured to use it. Also verify the **Base model** name exactly matches what the provider's API accepts.
+  </Accordion>
+  <Accordion title="Users see 'The system default model has not been set'">
+    No model is currently set as the default. Go to **System Settings → AI Models** and click **Set as default** on any model.
+  </Accordion>
+</AccordionGroup>

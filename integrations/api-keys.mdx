@@ -1,0 +1,142 @@
+---
+title: "API Keys: Authenticate Programmatic SQLBot Requests"
+description: "Generate access_key and secret_key pairs to authenticate requests to the SQLBot API without using your password. Each account supports up to five keys."
+---
+
+API keys give you a stable way to authenticate requests to the SQLBot API from scripts, CI pipelines, or external services — without embedding your account password. Each key consists of an `access_key` (public identifier) and a `secret_key` (credential), generated as cryptographically secure random strings.
+
+<Info>
+  API keys authenticate the same API surface as session-based login. They carry the permissions of the user who created them, including workspace membership and role-based access controls.
+</Info>
+
+## Generating an API key
+
+<Steps>
+  <Step title="Open your profile settings">
+    In the SQLBot web UI, click your username in the top-right corner and select **Settings**, then navigate to **API Keys**.
+  </Step>
+
+  <Step title="Create a new key">
+    Click **Generate**. SQLBot creates a new key pair immediately.
+
+    The backend generates both values using Python's `secrets` module, which produces URL-safe random strings:
+
+    ```python
+    access_key = secrets.token_urlsafe(16)
+    secret_key = secrets.token_urlsafe(32)
+    ```
+
+    This means `access_key` is 16 bytes of randomness (22 characters URL-safe base64) and `secret_key` is 32 bytes (43 characters). Both are unique.
+  </Step>
+
+  <Step title="Copy the secret key">
+    SQLBot displays the full `secret_key` only at creation time. Copy it immediately and store it somewhere secure. You cannot retrieve it again after closing the dialog.
+
+    <Warning>
+      The `secret_key` is never displayed again after the initial generation. If you lose it, delete the key and generate a new one.
+    </Warning>
+  </Step>
+</Steps>
+
+## Key limits
+
+Each user account can hold a maximum of **5 API keys** at one time. Attempting to create a sixth key returns an error.
+
+From `backend/apps/system/api/apikey.py`:
+
+```python
+count = session.exec(
+    select(func.count())
+    .select_from(ApiKeyModel)
+    .where(ApiKeyModel.uid == current_user.id)
+).one()
+if count >= 5:
+    raise ValueError("Maximum of 5 API keys allowed")
+```
+
+If you need to create a new key and are already at the limit, delete an existing key first.
+
+## Using an API key in requests
+
+Pass your API key in the `Authorization` header of every request. The format is:
+
+```http
+Authorization: <access_key>:<secret_key>
+```
+
+**Example:**
+
+```bash
+curl -X POST https://<your-sqlbot-host>/api/v1/chat/question \
+  -H "Authorization: <access_key>:<secret_key>" \
+  -H "Content-Type: application/json" \
+  -d '{"chat_id": 123, "question": "Show me top 10 customers by revenue"}'
+```
+
+<Note>
+  The `TokenMiddleware` in SQLBot's backend intercepts every request and validates the `Authorization` header. If the key is disabled or not found, the request is rejected before it reaches any route handler.
+</Note>
+
+## Enabling and disabling keys
+
+You can toggle any key on or off without deleting it. A disabled key is rejected at the middleware layer — the `access_key` lookup succeeds but the status check fails. This lets you temporarily revoke access without losing the key ID.
+
+From the API key management endpoint:
+
+```python
+@router.put("/status")
+async def status(session: SessionDep, current_user: CurrentUser, dto: ApikeyStatus):
+    api_key = session.get(ApiKeyModel, dto.id)
+    if api_key.uid != current_user.id:
+        raise PermissionError("No permission to modify this API Key")
+    if dto.status == api_key.status:
+        return
+    api_key.status = dto.status
+    await clear_api_key_cache(api_key.access_key)
+    session.add(api_key)
+    session.commit()
+```
+
+After toggling a key's status, the cache entry for that `access_key` is cleared immediately so the change takes effect without a server restart.
+
+## Deleting a key
+
+To permanently revoke a key, delete it from the **API Keys** settings page or via the API:
+
+```bash
+curl -X DELETE https://<your-sqlbot-host>/api/v1/system/apikey/{id} \
+  -H "Authorization: <access_key>:<secret_key>"
+```
+
+You can only delete keys that belong to your own account. Attempting to delete another user's key returns a permission error:
+
+```python
+@router.delete("/{id}")
+async def delete(session: SessionDep, current_user: CurrentUser, id: int):
+    api_key = session.get(ApiKeyModel, id)
+    if api_key.uid != current_user.id:
+        raise PermissionError("No permission to delete this API Key")
+    await clear_api_key_cache(api_key.access_key)
+    session.delete(api_key)
+    session.commit()
+```
+
+## Security best practices
+
+<AccordionGroup>
+  <Accordion title="Treat the secret_key like a password">
+    The `secret_key` provides full API access under your account. Do not commit it to source control, log it, or share it in plain text. Store it in a secrets manager (e.g., AWS Secrets Manager, HashiCorp Vault, or a `.env` file excluded from version control).
+  </Accordion>
+
+  <Accordion title="Rotate keys regularly">
+    Rotate API keys periodically and whenever a key may have been exposed — for example, after a team member with access leaves, or after a repository is accidentally made public. Generate a new key, update your integrations, then delete the old key.
+  </Accordion>
+
+  <Accordion title="Use one key per integration">
+    Rather than sharing a single key across multiple systems, generate a separate key for each integration. This makes it straightforward to revoke access for one system without affecting others, and gives you a clearer audit trail.
+  </Accordion>
+
+  <Accordion title="Disable rather than delete when troubleshooting">
+    If you suspect a key is being misused but are not sure, disable it first. A disabled key is immediately rejected but can be re-enabled if the suspicion turns out to be a false alarm. Deletion is irreversible.
+  </Accordion>
+</AccordionGroup>

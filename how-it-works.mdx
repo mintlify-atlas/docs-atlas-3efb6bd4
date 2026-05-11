@@ -1,0 +1,198 @@
+---
+title: "How SQLBot works: RAG + LLM text-to-SQL pipeline"
+description: "How SQLBot's RAG pipeline works: schema embedding, vector retrieval, prompt construction, LLM-based SQL generation, query execution, and result rendering."
+---
+
+SQLBot converts a natural language question into an executed SQL query through a retrieval-augmented generation (RAG) pipeline. Rather than sending your entire database schema to the LLM on every request, SQLBot embeds schema metadata into vectors and retrieves only the most relevant tables and columns for each question. This keeps prompts concise and SQL generation accurate even on large databases.
+
+## The pipeline at a glance
+
+Every query passes through six stages:
+
+<Steps>
+  <Step title="Schema embedding (one-time setup)">
+    When you connect a datasource, SQLBot reads every table and column definition, combines them into text representations, and calls the configured embedding model to produce vector embeddings. The same process runs for terminology library entries and data training examples. These embeddings are stored in PostgreSQL alongside the metadata they represent.
+
+    The embedding for a table is built from its schema text — the table name, column names, data types, and any descriptions you have added. For example:
+
+    ```python
+    # From backend/apps/datasource/embedding/table_embedding.py
+    def get_table_embedding(tables: list[dict], question: str):
+        _list = []
+        for table in tables:
+            _list.append({
+                "id": table.get('id'),
+                "schema_table": table.get('schema_table'),
+                "cosine_similarity": 0.0
+            })
+        model = EmbeddingModelCache.get_model()
+        results = model.embed_documents([s.get('schema_table') for s in _list])
+        ...
+    ```
+
+    Embeddings are updated incrementally whenever you add or modify datasource metadata.
+  </Step>
+
+  <Step title="Schema retrieval via cosine similarity">
+    When a user submits a question, SQLBot embeds the question text with the same embedding model and computes the cosine similarity between the question vector and every table embedding in the datasource.
+
+    ```python
+    # From backend/apps/datasource/embedding/utils.py
+    def cosine_similarity(vec_a, vec_b):
+        dot_product = sum(a * b for a, b in zip(vec_a, vec_b))
+        norm_a = math.sqrt(sum(a * a for a in vec_a))
+        norm_b = math.sqrt(sum(b * b for b in vec_b))
+        if norm_a == 0 or norm_b == 0:
+            return 0.0
+        return dot_product / (norm_a * norm_b)
+    ```
+
+    Tables are ranked by similarity and only the top `TABLE_EMBEDDING_COUNT` results are carried forward into the prompt. The same ranking approach applies at the datasource level when a workspace contains multiple databases.
+  </Step>
+
+  <Step title="Terminology and training example retrieval">
+    In parallel with schema retrieval, SQLBot queries two additional sources to enrich the prompt:
+
+    **Terminology library** — Each term entry has a word, optional synonyms, a description, and an optional embedding. SQLBot matches terms against the question using both substring search and vector similarity. Matched terms are serialized to XML and injected into the prompt so the LLM understands domain vocabulary.
+
+    ```sql
+    -- Terminology similarity search (from terminology/curd/terminology.py)
+    SELECT id, pid, word, similarity
+    FROM (
+      SELECT id, pid, word, oid, specific_ds, datasource_ids, enabled,
+        (1 - (embedding <=> :embedding_array)) AS similarity
+      FROM terminology AS child
+    ) TEMP
+    WHERE similarity > 0.7 AND oid = :oid AND enabled = true
+    ORDER BY similarity DESC
+    LIMIT 5
+    ```
+
+    **Data training examples** — Curated question-to-SQL pairs stored by administrators. These are embedded and retrieved by similarity at query time. When a matching example exists, the LLM sees a proven SQL pattern for a similar question.
+  </Step>
+
+  <Step title="Prompt construction">
+    SQLBot assembles a structured multi-turn message list from the retrieved context. The message chain includes:
+
+    - A system prompt with SQL generation rules and safety constraints
+    - The retrieved database schema (table DDL, column types, sample data)
+    - Custom prompts defined by the workspace administrator
+    - Matched terminology entries (domain vocabulary)
+    - Matched data training examples (question-SQL pairs)
+    - Conversation history from previous turns in the same chat
+
+    ```python
+    # From backend/apps/chat/task/llm.py — prompt assembly
+    self.sql_message.append(SystemPromptMessage(content=_system_templates['system']))
+    self.sql_message.append(HumanPromptMessage(content=_system_templates['rules']))
+    self.sql_message.append(HumanPromptMessage(content=_system_templates['schema']))
+    if _system_templates.get('terminologies'):
+        self.sql_message.append(HumanPromptMessage(content=_system_templates['terminologies']))
+    if _system_templates.get('data_training'):
+        self.sql_message.append(HumanPromptMessage(content=_system_templates['data_training']))
+    ```
+
+    The conversation history is capped at a configurable number of rounds (`chat.context_record_count`) to avoid exceeding the LLM's context window.
+  </Step>
+
+  <Step title="SQL generation and execution">
+    The assembled message list is streamed to the LLM via LangChain. SQLBot streams the response token-by-token so users see output appear progressively.
+
+    Once the full SQL is received, SQLBot executes it against the connected database. Row-level permission filters are applied before execution so that users can only access data their workspace permissions allow.
+
+    If execution fails — for example due to a syntax error or a missing column reference — SQLBot captures the error message and stores it. On the next question in the same chat, the previous error is included in the prompt context so the LLM can self-correct.
+
+    ```python
+    # From backend/apps/chat/task/llm.py — error context injection
+    last_execute_sql_error = get_last_execute_sql_error(session, self.chat_question.chat_id)
+    if last_execute_sql_error:
+        self.chat_question.error_msg = f'''<error-msg>
+    {last_execute_sql_error}
+    </error-msg>'''
+    ```
+  </Step>
+
+  <Step title="Result rendering and chart suggestion">
+    Query results are returned as structured JSON and rendered as a data table in the chat interface. SQLBot then calls the LLM a second time with a chart-suggestion prompt to determine the most appropriate visualization (bar chart, line chart, pie chart, and so on) based on the result shape and column types.
+
+    After the chart is rendered, SQLBot can optionally generate:
+    - **Intelligent analysis** — A written interpretation of the query results
+    - **Predictive analysis** — A data forecast based on the result trend
+    - **Recommended questions** — Follow-up questions the user might want to ask next, generated from the schema and conversation context
+  </Step>
+</Steps>
+
+## RAG in detail
+
+The retrieval step is what separates SQLBot from a simple "paste your schema into the prompt" approach. Large databases can have hundreds of tables. Sending all of them would exceed LLM context windows and dilute the signal.
+
+<AccordionGroup>
+  <Accordion title="Why vector embeddings?">
+    A vector embedding maps text to a point in high-dimensional space such that semantically similar text lands close together. When a user asks "Show me monthly revenue by sales rep," the question embedding will be close to the embeddings of tables named `orders`, `sales_reps`, and `transactions` — and far from tables like `audit_log` or `system_config`.
+
+    SQLBot uses cosine similarity to measure this closeness and selects the top-ranked tables, keeping the prompt focused on what matters for that specific question.
+  </Accordion>
+  <Accordion title="How terminology improves accuracy">
+    Business databases rarely use the same language as business users. A column called `net_rev_usd` is not obviously "revenue in dollars" to an LLM operating without context.
+
+    The terminology library bridges this gap. You create an entry with the word "revenue," add synonyms like "sales" and "income," and write a description that maps it to the correct column or calculation. When a user mentions any of those words, SQLBot retrieves the entry and injects the mapping into the prompt.
+
+    Terminology entries are also vectorized, so fuzzy matches ("total earnings," "gross income") still trigger relevant entries even without an exact word match.
+  </Accordion>
+  <Accordion title="How data training examples improve accuracy">
+    Data training lets you store pairs of (natural language question, correct SQL). For example:
+
+    | Question | SQL |
+    |---|---|
+    | Total revenue last quarter | `SELECT SUM(amount) FROM orders WHERE created_at >= DATE_TRUNC('quarter', CURRENT_DATE - INTERVAL '3 months')` |
+
+    At query time, the question is embedded and compared to every stored training example. The most similar examples are included in the prompt. This is especially powerful for questions that involve business-specific aggregations, date logic, or multi-table joins that are hard for a general-purpose LLM to infer from schema alone.
+  </Accordion>
+  <Accordion title="What happens when a query fails or is ambiguous?">
+    SQLBot handles failure and ambiguity in two ways:
+
+    **Automatic error recovery** — If the executed SQL produces a database error, the error message is stored with the chat record. On the next user message in the same chat, the error is included in the prompt as an `<error-msg>` block. The LLM sees what went wrong and can generate a corrected query.
+
+    **Regeneration** — Users can trigger a regeneration of any previous answer using the quick command system. The regeneration request carries the original question plus any additional context the user provides, and the LLM tries again.
+
+    **Conversation context** — Each follow-up question in a chat session includes the previous rounds of (question, SQL, answer) up to the configured history limit. This allows the LLM to resolve ambiguous pronouns ("break *that* down by region") by looking back at what was asked before.
+  </Accordion>
+</AccordionGroup>
+
+## Architecture overview
+
+SQLBot is a FastAPI application with a React frontend. The backend is structured as a set of domain modules:
+
+| Module | Responsibility |
+|---|---|
+| `apps/chat` | Chat session management, question handling, streaming responses |
+| `apps/chat/task/llm.py` | Core `LLMService` — prompt assembly, LLM invocation, result persistence |
+| `apps/datasource/embedding` | Schema embedding and cosine similarity retrieval |
+| `apps/terminology` | Terminology library CRUD and embedding-based retrieval |
+| `apps/data_training` | SQL training example CRUD and embedding-based retrieval |
+| `apps/ai_model` | LLM and embedding model factory, provider integrations |
+| `apps/db` | SQL execution, connection management, version detection |
+
+The MCP server is mounted as a separate FastAPI sub-application on port `8001`, exposing operations like `mcp_question`, `mcp_datasource_list`, and `mcp_assistant` for use by AI agents.
+
+```python
+# From backend/main.py — MCP server setup
+mcp = FastApiMCP(
+    app,
+    name="SQLBot MCP Server",
+    description="SQLBot MCP Server",
+    include_operations=[
+        "mcp_datasource_list",
+        "get_model_list",
+        "mcp_question",
+        "mcp_start",
+        "mcp_assistant",
+        "mcp_ws_list"
+    ]
+)
+mcp.mount(mcp_app)
+```
+
+<Note>
+  On startup, SQLBot automatically runs Alembic database migrations, initializes the embedding cache, and backfills any missing embeddings for terminology, data training examples, and table schemas. This means embedding stays consistent even after upgrades that add new embedding fields.
+</Note>

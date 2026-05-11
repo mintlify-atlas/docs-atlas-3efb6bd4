@@ -1,0 +1,71 @@
+---
+title: "SQLBot: Intelligent Conversational Data Analysis"
+description: "SQLBot is an open-source platform that converts natural language into SQL using LLMs and RAG, enabling ChatBI for any database without writing a single query."
+---
+
+SQLBot is an intelligent data query system built by the DataEase open-source team. It connects large language models with your databases through a RAG pipeline, letting users ask questions in plain language and receive SQL-backed results as tables or interactive charts — no SQL knowledge required. Designed to improve over time, SQLBot gets more accurate the more it is used.
+
+## Key features
+
+<CardGroup cols={2}>
+  <Card title="Text-to-SQL via LLMs + RAG" icon="wand-magic-sparkles">
+    Natural language questions are converted to SQL using a retrieval-augmented pipeline that feeds the LLM only the schema context it needs, improving accuracy and reducing hallucinations.
+  </Card>
+  <Card title="ChatBI" icon="comments">
+    A conversational interface lets users ask follow-up questions, regenerate answers, request analysis, and get recommended next questions — all in a single chat session.
+  </Card>
+  <Card title="Multi-tenant workspaces" icon="shield-halved">
+    Workspace-level resource isolation builds clear data boundaries. Fine-grained permission controls ensure every user only sees the data they are allowed to access.
+  </Card>
+  <Card title="12+ LLM providers" icon="robot">
+    Works out of the box with OpenAI, DeepSeek, Gemini, Kimi, Qianfan, Tencent Hunyuan, iFlytek Spark, and any OpenAI-compatible endpoint.
+  </Card>
+  <Card title="Multiple database connectors" icon="database">
+    Connects to MySQL, PostgreSQL, SQL Server, Oracle, ClickHouse, Elasticsearch, Redshift, Hive, DM, and Excel/CSV files.
+  </Card>
+  <Card title="Web embedding and MCP" icon="plug">
+    Embed SQLBot as a chat widget with web or pop-up embedding. Expose it as an MCP server so AI agents in n8n, Dify, MaxKB, or DataEase can query your databases directly.
+  </Card>
+</CardGroup>
+
+## Supported LLM providers
+
+SQLBot supports 12 LLM providers, all communicating over the OpenAI-compatible API format.
+
+| Provider | API compatibility |
+|---|---|
+| Alibaba Cloud Bailian | OpenAI compatible |
+| Qianfan | OpenAI compatible |
+| DeepSeek | OpenAI compatible |
+| Tencent Hunyuan | OpenAI compatible |
+| iFlytek Spark | OpenAI compatible |
+| Gemini | OpenAI compatible |
+| OpenAI | Native |
+| Kimi | OpenAI compatible |
+| Tencent Cloud | OpenAI compatible |
+| Volcano Engine | OpenAI compatible |
+| MiniMax | OpenAI compatible |
+| Generic OpenAI compatible | Custom base URL |
+
+<Tip>
+  The generic OpenAI-compatible provider lets you connect any locally hosted or third-party model that exposes an OpenAI-style API, including Ollama, LM Studio, and vLLM.
+</Tip>
+
+## Accuracy over time
+
+SQLBot provides three mechanisms that improve query accuracy as you use it:
+
+- **Terminology library** — Define domain-specific vocabulary and synonyms (e.g., "revenue" maps to the `net_sales` column). SQLBot retrieves relevant terms via embedding similarity and injects them into the prompt.
+- **Data training** — Store question-to-SQL example pairs. These are embedded and retrieved at query time so the LLM can use proven patterns from your business context.
+- **Table relations** — Declare how tables join together. SQLBot includes this metadata when constructing prompts, reducing incorrect cross-joins and missing foreign keys.
+
+## Ready to get started?
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Deploy SQLBot with Docker and run your first query in minutes.
+  </Card>
+  <Card title="How it works" icon="brain" href="/how-it-works">
+    Understand the RAG + LLM pipeline that powers SQLBot.
+  </Card>
+</CardGroup>
